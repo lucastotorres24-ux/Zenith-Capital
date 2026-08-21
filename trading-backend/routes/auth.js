@@ -6,20 +6,21 @@ const { findUserByUsername, createUser } = require('../data/store');
 
 const router = express.Router();
 
-// Protección básica contra fuerza bruta: máximo 10 intentos por IP cada 15 min
+// Protección básica contra fuerza bruta: máximo N intentos por IP cada 15 min
 // en login/registro. Sin esto, cualquiera podría probar miles de contraseñas.
+// En desarrollo local se deja mucho más alto (nadie más puede llegar a tu
+// localhost de todos modos); en producción (NODE_ENV=production, como en
+// Render) vuelve a ser estricto.
+const isProd = process.env.NODE_ENV === 'production';
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: isProd ? 10 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiados intentos. Intenta de nuevo en unos minutos.' },
 });
 
-const isProd = process.env.NODE_ENV === 'production';
-if (isProd) {
-  router.use(authLimiter);
-}
+router.use(authLimiter);
 
 // POST /api/auth/login
 router.post('/login', (req, res) => {

@@ -535,6 +535,50 @@ button, input, select { font-family: inherit; }
 }
 .empty-state .icon { font-size: 28px; margin-bottom: 10px; }
 
+.page-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Estados de depósito (reutiliza .badge) ---------------------------------- */
+
+.badge.badge-en_proceso { background: var(--warning-soft); color: #a87005; }
+.badge.badge-completado { background: var(--good-soft); color: var(--good); }
+.badge.badge-rechazado { background: var(--critical-soft); color: var(--critical); }
+
+/* Comprobante de depósito -------------------------------------------------- */
+
+.deposit-receipt { text-align: center; padding: 6px 4px 4px; }
+.deposit-receipt-icon { font-size: 34px; margin-bottom: 10px; }
+.deposit-receipt-status {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #a87005;
+  background: var(--warning-soft);
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  margin-bottom: 16px;
+}
+.deposit-receipt-detail {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.deposit-receipt-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
 /* Cuentas ---------------------------------------------------------------- */
 
 .accounts-grid {

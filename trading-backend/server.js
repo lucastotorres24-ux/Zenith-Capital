@@ -5,6 +5,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const accountsRoutes = require('./routes/accounts');
 const aiRoutes = require('./routes/ai');
+const depositsRoutes = require('./routes/deposits');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -36,6 +37,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/deposits', depositsRoutes);
 
 // Manejo simple de rutas no encontradas
 app.use((req, res) => {

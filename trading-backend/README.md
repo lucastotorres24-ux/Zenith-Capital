@@ -215,8 +215,9 @@ y soporta justo este tipo de proceso:
    - `NODE_ENV` → `production`
    - `OPENAI_API_KEY` → tu key real, si quieres que el análisis con IA funcione en producción
    - `OPENAI_MODEL` → opcional, revisa el valor vigente en tu dashboard de OpenAI
-6. Como el disco de Render es efímero en el plan gratis, agrega también un **Disk** (Render → tu servicio → Disks → Add Disk) montado en `/opt/render/project/src/data`, y define `DB_PATH=/opt/render/project/src/data/data.json` como variable de entorno. Así el archivo de datos no se borra en cada redeploy.
-7. Deploy. Render te da una URL tipo `https://tu-servicio.onrender.com` — pruébala con `curl https://tu-servicio.onrender.com/api/health`.
-8. Cuando tengas el dominio comprado (Cloudflare Registrar, Namecheap, etc.), en Render ve a **Settings → Custom Domain** y sigue las instrucciones para apuntar tu DNS ahí.
+6. Deploy. Render te da una URL tipo `https://tu-servicio.onrender.com` — pruébala con `curl https://tu-servicio.onrender.com/api/health`.
+7. Cuando tengas el dominio comprado (Cloudflare Registrar, Namecheap, etc.), en Render ve a **Settings → Custom Domain** y sigue las instrucciones para apuntar tu DNS ahí.
+
+**Nota sobre los datos en el plan gratis:** Render Free **no** permite agregar un Disk persistente (eso es de pago) — el sistema de archivos es efímero, así que `data/data.json` se resetea cada vez que el servicio se reinicia, se redespliega, o se "duerme" por inactividad (~15 min sin tráfico en el plan gratis). El usuario demo se vuelve a crear solo en cada arranque; cualquier cuenta que registres en la versión desplegada puede desaparecer en algún reinicio. Para un proyecto de práctica sin dinero real esto no es grave. Si más adelante quieres que los datos persistan de verdad, la opción es una base de datos gestionada (ej. Render Postgres, gratis los primeros 30 días) en vez de un archivo local.
 
 Railway funciona de forma muy similar si prefieres esa opción.

@@ -18,7 +18,9 @@ function seedData() {
   return {
     nextUserId: 2,
     nextAccountId: 3,
+    nextDepositId: 1,
     users: [{ id: 1, username: 'demo', passwordHash: demoHash }],
+    deposits: [],
     accounts: [
       {
         id: 1,
@@ -58,7 +60,23 @@ function load() {
     return data;
   }
   const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  return JSON.parse(raw);
+  const data = JSON.parse(raw);
+
+  // Migración simple: si el archivo viene de una versión anterior (sin
+  // depósitos todavía), se completan los campos que falten sin perder los
+  // datos que ya existen.
+  let migrated = false;
+  if (!Array.isArray(data.deposits)) {
+    data.deposits = [];
+    migrated = true;
+  }
+  if (typeof data.nextDepositId !== 'number') {
+    data.nextDepositId = 1;
+    migrated = true;
+  }
+  if (migrated) save(data);
+
+  return data;
 }
 
 module.exports = { load, save };

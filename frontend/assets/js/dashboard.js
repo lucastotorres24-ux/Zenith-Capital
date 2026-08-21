@@ -12,6 +12,7 @@ const CRYPTO_META = {
 const TICKER_REFRESH_MS = 60_000;
 
 let accountsCache = [];
+let depositsCache = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
@@ -23,8 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
   wireLogout();
   wireModal();
   wireAiPanel();
+  wireDepositModal();
 
   loadAccounts();
+  loadDeposits();
   loadTicker();
   setInterval(loadTicker, TICKER_REFRESH_MS);
 });
@@ -285,6 +288,125 @@ async function handleAccountSubmit(event) {
   } finally {
     submitBtn.disabled = false;
   }
+}
+
+// ---------------------------------------------------------------------
+// Depósitos: modal (formulario -> comprobante) + historial
+// ---------------------------------------------------------------------
+
+function wireDepositModal() {
+  const overlay = document.getElementById('deposit-modal');
+  const form = document.getElementById('deposit-form');
+
+  document.getElementById('open-deposit-modal').addEventListener('click', openDepositModal);
+  document.getElementById('deposit-modal-close').addEventListener('click', closeDepositModal);
+  document.getElementById('deposit-modal-cancel').addEventListener('click', closeDepositModal);
+  document.getElementById('deposit-receipt-close').addEventListener('click', closeDepositModal);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeDepositModal();
+  });
+
+  form.addEventListener('submit', handleDepositSubmit);
+}
+
+function openDepositModal() {
+  document.getElementById('deposit-form').reset();
+  document.getElementById('deposit-form').style.display = 'block';
+  document.getElementById('deposit-receipt').style.display = 'none';
+  hideDepositModalError();
+  document.getElementById('deposit-modal').classList.add('is-visible');
+  document.getElementById('deposit-amount').focus();
+}
+
+function closeDepositModal() {
+  document.getElementById('deposit-modal').classList.remove('is-visible');
+}
+
+function showDepositModalError(message) {
+  document.getElementById('deposit-modal-error-text').textContent = message;
+  document.getElementById('deposit-modal-error').classList.add('is-visible');
+}
+function hideDepositModalError() {
+  document.getElementById('deposit-modal-error').classList.remove('is-visible');
+}
+
+async function handleDepositSubmit(event) {
+  event.preventDefault();
+  hideDepositModalError();
+
+  const payload = {
+    amount: Number(document.getElementById('deposit-amount').value),
+    bank: document.getElementById('deposit-bank').value.trim(),
+    contact: document.getElementById('deposit-contact').value.trim(),
+  };
+
+  const submitBtn = document.getElementById('deposit-modal-submit');
+  submitBtn.disabled = true;
+
+  try {
+    const deposit = await Api.createDeposit(payload);
+
+    // Cambia el formulario por el comprobante de estado.
+    document.getElementById('deposit-form').style.display = 'none';
+    document.getElementById('deposit-receipt').style.display = 'block';
+    document.getElementById('deposit-receipt-detail').innerHTML = `
+      <strong>${money(deposit.amount)}</strong> · ${escapeHtml(deposit.bank)}<br>
+      Contacto: ${escapeHtml(deposit.contact)}<br>
+      Referencia: #${deposit.id}
+    `;
+
+    loadDeposits();
+  } catch (err) {
+    showDepositModalError(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function loadDeposits() {
+  try {
+    depositsCache = await Api.getDeposits();
+    renderDeposits(depositsCache);
+  } catch (err) {
+    // Silencioso: un fallo aquí no debe tumbar el resto del dashboard.
+  }
+}
+
+function renderDeposits(deposits) {
+  const body = document.getElementById('deposits-body');
+  const empty = document.getElementById('deposits-empty');
+  const table = document.getElementById('deposits-table');
+
+  body.innerHTML = '';
+
+  if (deposits.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  deposits.forEach((d) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${new Date(d.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
+      <td>${money(d.amount)}</td>
+      <td>${escapeHtml(d.bank)}</td>
+      <td>${escapeHtml(d.contact)}</td>
+      <td><span class="badge badge-${d.status}">${depositStatusLabel(d.status)}</span></td>
+    `;
+    body.appendChild(row);
+  });
+}
+
+function depositStatusLabel(status) {
+  const labels = {
+    en_proceso: 'En proceso',
+    completado: 'Completado',
+    rechazado: 'Rechazado',
+  };
+  return labels[status] || status;
 }
 
 // ---------------------------------------------------------------------

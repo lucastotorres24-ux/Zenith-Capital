@@ -98,4 +98,12 @@ const Api = {
   getAiInsights() {
     return this.request('/api/ai/insights', { method: 'POST' });
   },
+
+  getDeposits() {
+    return this.request('/api/deposits');
+  },
+
+  createDeposit(payload) {
+    return this.request('/api/deposits', { method: 'POST', body: payload });
+  },
 };

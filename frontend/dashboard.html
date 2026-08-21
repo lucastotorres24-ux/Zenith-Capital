@@ -29,7 +29,10 @@
       <h1>Resumen de cuentas</h1>
       <p class="subtitle">Balance, equity y P/L flotante de todas tus cuentas de trading.</p>
     </div>
-    <button class="btn btn-primary" id="open-create-account">+ Nueva cuenta</button>
+    <div class="page-header-actions">
+      <button class="btn btn-secondary" id="open-create-account">+ Nueva cuenta</button>
+      <button class="btn btn-primary" id="open-deposit-modal">DEPOSITAR</button>
+    </div>
   </div>
 
   <!-- Stat tiles -->
@@ -104,6 +107,36 @@
       <div class="empty-state" id="accounts-empty" style="display:none;">
         <div class="icon">📂</div>
         <div>Todavía no tienes cuentas. Crea la primera con el botón de arriba.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Depósitos -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Depósitos</h2>
+        <div class="subtitle">Historial de solicitudes de depósito.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <table class="ticker-table" id="deposits-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Monto</th>
+            <th>Banco</th>
+            <th>Contacto</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="deposits-body">
+          <!-- se llena por JS -->
+        </tbody>
+      </table>
+      <div class="empty-state" id="deposits-empty" style="display:none;">
+        <div class="icon">💳</div>
+        <div>Todavía no tienes solicitudes de depósito. Usa el botón "Depositar" arriba.</div>
       </div>
     </div>
   </section>
@@ -202,6 +235,55 @@
         <button type="submit" class="btn btn-primary" id="modal-submit">Guardar</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Modal depositar -->
+<div class="modal-overlay" id="deposit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="deposit-modal-title">Solicitar depósito</h3>
+      <button class="modal-close" id="deposit-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div id="deposit-modal-error" class="form-error">
+      <span>⚠</span>
+      <span id="deposit-modal-error-text"></span>
+    </div>
+
+    <form id="deposit-form">
+      <div class="field">
+        <label for="deposit-amount">¿Cuánto?</label>
+        <input id="deposit-amount" type="number" step="0.01" min="0.01" placeholder="500" required />
+      </div>
+
+      <div class="field">
+        <label for="deposit-bank">Banco</label>
+        <input id="deposit-bank" placeholder="Ej. Bancolombia, BBVA, Banco de Chile..." required />
+      </div>
+
+      <div class="field">
+        <label for="deposit-contact">Correo electrónico o WhatsApp</label>
+        <input id="deposit-contact" placeholder="tu@correo.com o +57 300 1234567" required />
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="deposit-modal-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="deposit-modal-submit">Confirmar</button>
+      </div>
+    </form>
+
+    <div class="deposit-receipt" id="deposit-receipt" style="display:none;">
+      <div class="deposit-receipt-icon">⏳</div>
+      <div class="deposit-receipt-status">DEPÓSITO EN PROCESO</div>
+      <div class="deposit-receipt-detail" id="deposit-receipt-detail"></div>
+      <p class="deposit-receipt-note">
+        Tu solicitud quedó registrada como pendiente — así funcionaría en una
+        plataforma real mientras se confirma la transferencia. La puedes
+        revisar en tu historial de depósitos.
+      </p>
+      <button type="button" class="btn btn-primary" id="deposit-receipt-close">Entendido</button>
+    </div>
   </div>
 </div>
 

@@ -68,6 +68,31 @@ function deleteAccount(id, userId) {
   return removed;
 }
 
+// ---- Deposits ----
+
+function getDepositsByUser(userId) {
+  const db = load();
+  return db.deposits
+    .filter((d) => d.userId === userId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function createDeposit({ userId, amount, bank, contact }) {
+  const db = load();
+  const deposit = {
+    id: db.nextDepositId++,
+    userId,
+    amount,
+    bank,
+    contact,
+    status: 'en_proceso',
+    createdAt: new Date().toISOString(),
+  };
+  db.deposits.push(deposit);
+  save(db);
+  return deposit;
+}
+
 module.exports = {
   findUserByUsername,
   createUser,
@@ -76,4 +101,6 @@ module.exports = {
   createAccount,
   updateAccount,
   deleteAccount,
+  getDepositsByUser,
+  createDeposit,
 };
