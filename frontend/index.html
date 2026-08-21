@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zenith Capital — Acceso</title>
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+<div class="auth-shell">
+
+  <!-- Panel izquierdo: branding, no es funcional, es contexto/marca -->
+  <aside class="auth-aside">
+    <div class="brand">
+      <span class="brand-mark">Z</span>
+      <span>Zenith Capital</span>
+    </div>
+
+    <div>
+      <h1>Tu futuro financiero, potenciado por inteligencia artificial.</h1>
+      <p>
+        Zenith Capital es una compañía de tecnología financiera: diseñamos
+        sistemas automatizados que leen el mercado y el comportamiento de tus
+        cuentas para ayudarte a entender, en segundos, hacia dónde se mueve
+        tu dinero.
+      </p>
+
+      <div class="aside-stats">
+        <div class="aside-stat">
+          <div class="value">1:200</div>
+          <div class="label">Apalancamiento máx.</div>
+        </div>
+        <div class="aside-stat">
+          <div class="value">24/7</div>
+          <div class="label">Datos de mercado cripto</div>
+        </div>
+        <div class="aside-stat">
+          <div class="value">IA</div>
+          <div class="label">Motor de análisis</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-callout">
+      <div class="ai-callout-icon">✨</div>
+      <div>
+        <h3>Análisis impulsado por IA</h3>
+        <p>
+          Nuestro motor de insights usa la API de OpenAI para leer el estado
+          de tus cuentas y las condiciones del mercado, y explicártelo en
+          lenguaje simple — disponible dentro de tu dashboard.
+        </p>
+        <span class="ai-callout-tag">Powered by OpenAI</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Panel derecho: formulario -->
+  <main class="auth-main">
+    <div class="auth-card">
+
+      <div class="tabs" role="tablist">
+        <button class="tab-btn is-active" id="tab-login" role="tab" aria-selected="true">Iniciar sesión</button>
+        <button class="tab-btn" id="tab-register" role="tab" aria-selected="false">Crear cuenta</button>
+      </div>
+
+      <div id="form-error" class="form-error">
+        <span>⚠</span>
+        <span id="form-error-text">Algo salió mal.</span>
+      </div>
+
+      <!-- Login -->
+      <section class="auth-panel is-active" id="panel-login">
+        <h2>Bienvenido de nuevo</h2>
+        <p class="subtitle">Ingresa a tu panel de cuentas.</p>
+
+        <form id="login-form" novalidate>
+          <div class="field">
+            <label for="login-username">Usuario</label>
+            <input id="login-username" name="username" type="text" placeholder="demo" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="login-password">Contraseña</label>
+            <input id="login-password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="login-submit">
+            Iniciar sesión
+          </button>
+        </form>
+
+        <p class="demo-hint">
+          Usuario de prueba: <code>demo</code> / <code>demo1234</code>
+        </p>
+      </section>
+
+      <!-- Registro -->
+      <section class="auth-panel" id="panel-register">
+        <h2>Crea tu cuenta</h2>
+        <p class="subtitle">Solo toma un minuto.</p>
+
+        <form id="register-form" novalidate>
+          <div class="field">
+            <label for="register-username">Usuario</label>
+            <input id="register-username" name="username" type="text" placeholder="Mínimo 3 caracteres" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="register-password">Contraseña</label>
+            <input id="register-password" name="password" type="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" required />
+          </div>
+          <p class="helper-text">Al continuar aceptas que esto es un entorno de práctica, no un servicio financiero real.</p>
+          <button type="submit" class="btn btn-primary btn-block" id="register-submit">
+            Crear cuenta
+          </button>
+        </form>
+      </section>
+
+    </div>
+  </main>
+
+</div>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/auth.js"></script>
+</body>
+</html>

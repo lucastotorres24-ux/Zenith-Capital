@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zenith Capital — Dashboard</title>
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">Z</span>
+    <span>Zenith Capital</span>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip">
+      <span class="user-avatar" id="user-initial">U</span>
+      <span id="user-name">—</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="logout-btn">Cerrar sesión</button>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-header">
+    <div>
+      <h1>Resumen de cuentas</h1>
+      <p class="subtitle">Balance, equity y P/L flotante de todas tus cuentas de trading.</p>
+    </div>
+    <button class="btn btn-primary" id="open-create-account">+ Nueva cuenta</button>
+  </div>
+
+  <!-- Stat tiles -->
+  <section class="stat-grid" id="stat-grid">
+    <div class="stat-tile">
+      <div class="label">Balance total</div>
+      <div class="value" id="stat-balance">—</div>
+      <span class="delta is-flat" id="stat-balance-note">Suma de todas las cuentas</span>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Equity total</div>
+      <div class="value" id="stat-equity">—</div>
+      <span class="delta is-flat" id="stat-equity-note">Balance + P/L flotante</span>
+    </div>
+    <div class="stat-tile">
+      <div class="label">P/L flotante</div>
+      <div class="value" id="stat-pl">—</div>
+      <span class="delta" id="stat-pl-delta">—</span>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Cuentas activas</div>
+      <div class="value" id="stat-count">—</div>
+      <span class="delta is-flat">En tu perfil</span>
+    </div>
+  </section>
+
+  <!-- Análisis con IA -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Análisis con IA</h2>
+        <div class="subtitle">Lectura instantánea de tus cuentas y del mercado, generada por OpenAI.</div>
+      </div>
+      <span class="ai-callout-tag">Powered by OpenAI</span>
+    </div>
+    <div class="section-body">
+
+      <div class="empty-state" id="ai-empty">
+        <div class="icon">✨</div>
+        <div>Genera un análisis del estado de tus cuentas y del mercado cripto en este momento.</div>
+        <button class="btn btn-primary ai-generate-btn" id="ai-generate-btn">Generar análisis</button>
+      </div>
+
+      <div class="ai-result" id="ai-result" style="display:none;">
+        <p class="ai-result-text" id="ai-result-text"></p>
+        <div class="ai-result-footer">
+          <span class="ai-result-meta" id="ai-result-meta"></span>
+          <button class="btn btn-secondary btn-sm" id="ai-regenerate-btn">Regenerar</button>
+        </div>
+      </div>
+
+      <div class="form-error ai-error" id="ai-error">
+        <span>⚠</span>
+        <span id="ai-error-text"></span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Cuentas -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Tus cuentas</h2>
+        <div class="subtitle">Crea, edita o elimina cuentas de práctica.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="accounts-grid" id="accounts-grid">
+        <!-- se llena por JS -->
+      </div>
+      <div class="empty-state" id="accounts-empty" style="display:none;">
+        <div class="icon">📂</div>
+        <div>Todavía no tienes cuentas. Crea la primera con el botón de arriba.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ticker de mercado -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Mercado cripto</h2>
+        <div class="subtitle">Precios en vivo vía CoinGecko · se actualiza cada 60s</div>
+      </div>
+      <span class="badge" id="ticker-status">cargando…</span>
+    </div>
+    <div class="section-body">
+      <table class="ticker-table">
+        <thead>
+          <tr>
+            <th>Activo</th>
+            <th style="text-align:right;">Precio (USD)</th>
+            <th style="text-align:right;">24h</th>
+          </tr>
+        </thead>
+        <tbody id="ticker-body">
+          <!-- se llena por JS -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- Modal crear/editar cuenta -->
+<div class="modal-overlay" id="account-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Nueva cuenta</h3>
+      <button class="modal-close" id="modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div id="modal-error" class="form-error">
+      <span>⚠</span>
+      <span id="modal-error-text"></span>
+    </div>
+
+    <form id="account-form">
+      <input type="hidden" id="account-id" />
+
+      <div class="field">
+        <label for="account-number">Número de cuenta</label>
+        <input id="account-number" placeholder="EX-10004" required />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="account-type">Tipo</label>
+          <select id="account-type">
+            <option value="Standard">Standard</option>
+            <option value="Pro">Pro</option>
+            <option value="Zero">Zero</option>
+            <option value="VIP">VIP</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="account-currency">Moneda</label>
+          <select id="account-currency">
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="USDT">USDT</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="account-balance">Balance</label>
+          <input id="account-balance" type="number" step="0.01" min="0" placeholder="1000" required />
+        </div>
+        <div class="field">
+          <label for="account-equity">Equity</label>
+          <input id="account-equity" type="number" step="0.01" min="0" placeholder="1000" required />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="account-leverage">Apalancamiento</label>
+        <select id="account-leverage">
+          <option value="1:50">1:50</option>
+          <option value="1:100" selected>1:100</option>
+          <option value="1:200">1:200</option>
+          <option value="1:500">1:500</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="modal-submit">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/dashboard.js"></script>
+</body>
+</html>
