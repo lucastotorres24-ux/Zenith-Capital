@@ -17,7 +17,21 @@ así no hay que repetir el contexto en cada conversación.
   las cuentas + precios de cripto del momento.
 - Ticker de mercado (CoinGecko): precio y variación 24h de 6 criptomonedas.
 - Depósitos v1: formulario (monto, banco, contacto) → queda como solicitud
-  con estado `en_proceso`, sin acreditar saldo automáticamente.
+  con estado `en_proceso`, sin acreditar saldo automáticamente. Incluye un
+  botón "Pagar con tarjeta" deshabilitado (placeholder visual para cuando
+  se conecte un procesador de pago real — no se construye antes de tener
+  ese proveedor, por seguridad: nunca se recolectan datos de tarjeta sin un
+  procesador real detrás).
+- Retiros v1: el usuario elige un método (Binance, Coinbase, Trust Wallet o
+  transferencia bancaria) y un monto. Al confirmar, se muestra el mensaje
+  "Tu solicitud de retiro ha sido enviada. Serás contactado por tu gestor
+  de cuentas para ayudarte con el retiro" y queda registrado en el
+  historial con estado `en_proceso`. Todavía no incluye destino
+  parcialmente oculto, comisión, ni el flujo completo de revisión de la
+  Fase 3 — eso se añade cuando lleguemos a esa fase.
+- Ticker de cripto: los precios parpadean en verde/rojo cuando cambian
+  entre actualizaciones (cada 15s) — el parpadeo refleja el movimiento real
+  de CoinGecko, no un efecto simulado.
 
 Todo lo que sigue es la especificación objetivo — se construye por fases
 (ver "Roadmap" al final), no de una sola vez.
@@ -244,5 +258,18 @@ Marcar con [x] cuando una fase quede terminada.
 - [ ] **Fase 7 — Perfil + verificación**: datos personales y flujo de
       verificación simulado (sin procesar documentos reales).
 
-Depósitos v1 (ya construido) se revisa y extiende en la Fase 0/3 para que
-sus estados coincidan con el resto del ledger.
+Depósitos v1 y Retiros v1 (ya construidos) se revisan y extienden en la
+Fase 0/3 para que sus estados coincidan con el resto del ledger.
+
+## Pendiente: ajuste manual de ganancia/pérdida (admin)
+
+Pedido: poder modificarle a un cliente su ganancia en una acción o inversión
+para cambiar su saldo en la cuenta — útil para simular resultados de
+mercado en las pruebas.
+
+Esto necesita el concepto de *holding* (posición por activo) que todavía no
+existe — hoy una cuenta solo tiene `balance` y `equity` globales, no
+posiciones individuales por activo. Se construye como parte de la
+**Fase 0** (ver roadmap arriba): una vez existan los holdings, este ajuste
+manual será una edición directa sobre el holding, que recalcula el balance/
+equity de la cuenta automáticamente.

@@ -6,6 +6,7 @@ const authRoutes = require('./routes/auth');
 const accountsRoutes = require('./routes/accounts');
 const aiRoutes = require('./routes/ai');
 const depositsRoutes = require('./routes/deposits');
+const withdrawalsRoutes = require('./routes/withdrawals');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -38,6 +39,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/deposits', depositsRoutes);
+app.use('/api/withdrawals', withdrawalsRoutes);
 
 // Manejo simple de rutas no encontradas
 app.use((req, res) => {

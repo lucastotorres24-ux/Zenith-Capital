@@ -19,8 +19,10 @@ function seedData() {
     nextUserId: 2,
     nextAccountId: 3,
     nextDepositId: 1,
+    nextWithdrawalId: 1,
     users: [{ id: 1, username: 'demo', passwordHash: demoHash }],
     deposits: [],
+    withdrawals: [],
     accounts: [
       {
         id: 1,
@@ -72,6 +74,14 @@ function load() {
   }
   if (typeof data.nextDepositId !== 'number') {
     data.nextDepositId = 1;
+    migrated = true;
+  }
+  if (!Array.isArray(data.withdrawals)) {
+    data.withdrawals = [];
+    migrated = true;
+  }
+  if (typeof data.nextWithdrawalId !== 'number') {
+    data.nextWithdrawalId = 1;
     migrated = true;
   }
   if (migrated) save(data);

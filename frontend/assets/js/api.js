@@ -106,4 +106,12 @@ const Api = {
   createDeposit(payload) {
     return this.request('/api/deposits', { method: 'POST', body: payload });
   },
+
+  getWithdrawals() {
+    return this.request('/api/withdrawals');
+  },
+
+  createWithdrawal(payload) {
+    return this.request('/api/withdrawals', { method: 'POST', body: payload });
+  },
 };

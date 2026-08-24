@@ -9,10 +9,12 @@ const CRYPTO_META = {
   solana: { symbol: 'SOL', name: 'Solana' },
   ripple: { symbol: 'XRP', name: 'XRP' },
 };
-const TICKER_REFRESH_MS = 60_000;
+const TICKER_REFRESH_MS = 15_000;
 
 let accountsCache = [];
 let depositsCache = [];
+let withdrawalsCache = [];
+let previousTickerPrices = {};
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
@@ -25,9 +27,11 @@ document.addEventListener('DOMContentLoaded', () => {
   wireModal();
   wireAiPanel();
   wireDepositModal();
+  wireWithdrawModal();
 
   loadAccounts();
   loadDeposits();
+  loadWithdrawals();
   loadTicker();
   setInterval(loadTicker, TICKER_REFRESH_MS);
 });
@@ -394,19 +398,126 @@ function renderDeposits(deposits) {
       <td>${money(d.amount)}</td>
       <td>${escapeHtml(d.bank)}</td>
       <td>${escapeHtml(d.contact)}</td>
-      <td><span class="badge badge-${d.status}">${depositStatusLabel(d.status)}</span></td>
+      <td><span class="badge badge-${d.status}">${movementStatusLabel(d.status)}</span></td>
     `;
     body.appendChild(row);
   });
 }
 
-function depositStatusLabel(status) {
+function movementStatusLabel(status) {
   const labels = {
     en_proceso: 'En proceso',
     completado: 'Completado',
     rechazado: 'Rechazado',
   };
   return labels[status] || status;
+}
+
+// ---------------------------------------------------------------------
+// Retiros: modal (formulario -> confirmación) + historial
+// ---------------------------------------------------------------------
+
+function wireWithdrawModal() {
+  const overlay = document.getElementById('withdraw-modal');
+  const form = document.getElementById('withdraw-form');
+
+  document.getElementById('open-withdraw-modal').addEventListener('click', openWithdrawModal);
+  document.getElementById('withdraw-modal-close').addEventListener('click', closeWithdrawModal);
+  document.getElementById('withdraw-modal-cancel').addEventListener('click', closeWithdrawModal);
+  document.getElementById('withdraw-confirmation-close').addEventListener('click', closeWithdrawModal);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeWithdrawModal();
+  });
+
+  form.addEventListener('submit', handleWithdrawSubmit);
+}
+
+function openWithdrawModal() {
+  document.getElementById('withdraw-form').reset();
+  document.getElementById('withdraw-form').style.display = 'block';
+  document.getElementById('withdraw-confirmation').style.display = 'none';
+  hideWithdrawModalError();
+  document.getElementById('withdraw-modal').classList.add('is-visible');
+  document.getElementById('withdraw-method').focus();
+}
+
+function closeWithdrawModal() {
+  document.getElementById('withdraw-modal').classList.remove('is-visible');
+}
+
+function showWithdrawModalError(message) {
+  document.getElementById('withdraw-modal-error-text').textContent = message;
+  document.getElementById('withdraw-modal-error').classList.add('is-visible');
+}
+function hideWithdrawModalError() {
+  document.getElementById('withdraw-modal-error').classList.remove('is-visible');
+}
+
+async function handleWithdrawSubmit(event) {
+  event.preventDefault();
+  hideWithdrawModalError();
+
+  const payload = {
+    method: document.getElementById('withdraw-method').value,
+    amount: Number(document.getElementById('withdraw-amount').value),
+  };
+
+  const submitBtn = document.getElementById('withdraw-modal-submit');
+  submitBtn.disabled = true;
+
+  try {
+    const withdrawal = await Api.createWithdrawal(payload);
+
+    // Cambia el formulario por el mensaje de confirmación.
+    document.getElementById('withdraw-form').style.display = 'none';
+    document.getElementById('withdraw-confirmation').style.display = 'block';
+    document.getElementById('withdraw-confirmation-detail').innerHTML = `
+      <strong>${money(withdrawal.amount)}</strong> · ${escapeHtml(withdrawal.method)}<br>
+      Referencia: #${withdrawal.id}
+    `;
+
+    loadWithdrawals();
+  } catch (err) {
+    showWithdrawModalError(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function loadWithdrawals() {
+  try {
+    withdrawalsCache = await Api.getWithdrawals();
+    renderWithdrawals(withdrawalsCache);
+  } catch (err) {
+    // Silencioso: un fallo aquí no debe tumbar el resto del dashboard.
+  }
+}
+
+function renderWithdrawals(withdrawals) {
+  const body = document.getElementById('withdrawals-body');
+  const empty = document.getElementById('withdrawals-empty');
+  const table = document.getElementById('withdrawals-table');
+
+  body.innerHTML = '';
+
+  if (withdrawals.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  withdrawals.forEach((w) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${new Date(w.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
+      <td>${escapeHtml(w.method)}</td>
+      <td>${money(w.amount)}</td>
+      <td><span class="badge badge-${w.status}">${movementStatusLabel(w.status)}</span></td>
+    `;
+    body.appendChild(row);
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -481,6 +592,13 @@ function renderTicker(data) {
     const isUp = change > 0;
     const isDown = change < 0;
 
+    // Compara contra el precio de la vuelta anterior (dato real de CoinGecko,
+    // no inventado) para resaltar en verde/rojo el movimiento del momento.
+    const prevPrice = previousTickerPrices[id];
+    const priceDelta = typeof prevPrice === 'number' ? entry.usd - prevPrice : 0;
+    const flashClass = priceDelta > 0 ? 'price-flash-up' : priceDelta < 0 ? 'price-flash-down' : '';
+    previousTickerPrices[id] = entry.usd;
+
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>
@@ -492,11 +610,17 @@ function renderTicker(data) {
           </div>
         </div>
       </td>
-      <td class="price-cell">${money(entry.usd)}</td>
+      <td class="price-cell ${flashClass}">${money(entry.usd)}</td>
       <td class="change-cell ${isUp ? 'is-up' : isDown ? 'is-down' : ''}">
         ${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(change).toFixed(2)}%
       </td>
     `;
     body.appendChild(row);
+  });
+
+  // Quita la clase de "flash" después de un momento para que el color
+  // vuelva a la normalidad y el próximo cambio se note de nuevo.
+  body.querySelectorAll('.price-flash-up, .price-flash-down').forEach((cell) => {
+    setTimeout(() => cell.classList.remove('price-flash-up', 'price-flash-down'), 900);
   });
 }

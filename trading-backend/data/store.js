@@ -93,6 +93,30 @@ function createDeposit({ userId, amount, bank, contact }) {
   return deposit;
 }
 
+// ---- Withdrawals ----
+
+function getWithdrawalsByUser(userId) {
+  const db = load();
+  return db.withdrawals
+    .filter((w) => w.userId === userId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function createWithdrawal({ userId, method, amount }) {
+  const db = load();
+  const withdrawal = {
+    id: db.nextWithdrawalId++,
+    userId,
+    method,
+    amount,
+    status: 'en_proceso',
+    createdAt: new Date().toISOString(),
+  };
+  db.withdrawals.push(withdrawal);
+  save(db);
+  return withdrawal;
+}
+
 module.exports = {
   findUserByUsername,
   createUser,
@@ -103,4 +127,6 @@ module.exports = {
   deleteAccount,
   getDepositsByUser,
   createDeposit,
+  getWithdrawalsByUser,
+  createWithdrawal,
 };
