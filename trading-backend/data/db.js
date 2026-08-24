@@ -20,9 +20,15 @@ function seedData() {
     nextAccountId: 3,
     nextDepositId: 1,
     nextWithdrawalId: 1,
+    nextHoldingId: 1,
+    nextTradeId: 1,
+    nextOptionId: 1,
     users: [{ id: 1, username: 'demo', passwordHash: demoHash }],
     deposits: [],
     withdrawals: [],
+    holdings: [],
+    trades: [],
+    options: [],
     accounts: [
       {
         id: 1,
@@ -82,6 +88,30 @@ function load() {
   }
   if (typeof data.nextWithdrawalId !== 'number') {
     data.nextWithdrawalId = 1;
+    migrated = true;
+  }
+  if (!Array.isArray(data.holdings)) {
+    data.holdings = [];
+    migrated = true;
+  }
+  if (typeof data.nextHoldingId !== 'number') {
+    data.nextHoldingId = 1;
+    migrated = true;
+  }
+  if (!Array.isArray(data.trades)) {
+    data.trades = [];
+    migrated = true;
+  }
+  if (typeof data.nextTradeId !== 'number') {
+    data.nextTradeId = 1;
+    migrated = true;
+  }
+  if (!Array.isArray(data.options)) {
+    data.options = [];
+    migrated = true;
+  }
+  if (typeof data.nextOptionId !== 'number') {
+    data.nextOptionId = 1;
     migrated = true;
   }
   if (migrated) save(data);

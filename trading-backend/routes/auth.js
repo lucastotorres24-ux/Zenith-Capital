@@ -2,7 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { findUserByUsername, createUser } = require('../data/store');
+const { findUserByUsername, createUser, findUserById, updateUserPassword } = require('../data/store');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -74,6 +75,31 @@ router.post('/register', (req, res) => {
   const newUser = createUser(username, passwordHash);
 
   res.status(201).json(newUser);
+});
+
+// POST /api/auth/change-password (requiere estar logueado)
+router.post('/change-password', requireAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'La contraseña actual y la nueva son requeridas' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres' });
+  }
+
+  const user = findUserById(req.user.id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+  const matches = bcrypt.compareSync(currentPassword, user.passwordHash);
+  if (!matches) {
+    return res.status(401).json({ error: 'La contraseña actual no es correcta' });
+  }
+
+  const newHash = bcrypt.hashSync(newPassword, 10);
+  updateUserPassword(user.id, newHash);
+
+  res.json({ message: 'Contraseña actualizada' });
 });
 
 module.exports = router;

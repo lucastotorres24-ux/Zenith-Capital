@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zenith Capital — Panel de Trading</title>
+<link rel="icon" type="image/png" href="assets/img/logo.png" />
+<link rel="stylesheet" href="assets/css/styles.css" />
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+    <span>Zenith Capital</span>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip">
+      <span class="user-avatar" id="user-initial">U</span>
+      <div class="user-chip-text">
+        <span id="user-name">—</span>
+        <span class="investor-badge">★ Zenith Investor</span>
+      </div>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="dashboard.html">← Volver al dashboard</a>
+    <button class="btn btn-ghost btn-sm" id="logout-btn">Cerrar sesión</button>
+  </div>
+</header>
+
+<main class="panel-body">
+
+  <!-- Gráfico -->
+  <section class="panel-chart-card">
+    <div class="panel-chart-header">
+      <div class="asset-tabs" id="asset-tabs">
+        <!-- se llena por JS -->
+      </div>
+      <div class="panel-price-display">
+        <div class="panel-price-value" id="panel-price-value">—</div>
+        <div class="panel-price-change is-flat" id="panel-price-change">cargando…</div>
+      </div>
+    </div>
+
+    <div id="panel-chart-container"></div>
+
+    <p class="panel-chart-note">
+      Velas de las últimas 24 horas con datos históricos reales de CoinGecko (puede tener algunos minutos
+      u horas de rezago respecto al segundo exacto). El precio de entrada/salida de cada operación se toma
+      del precio en vivo mostrado arriba a la derecha.
+    </p>
+  </section>
+
+  <!-- Panel de operación -->
+  <aside class="panel-sidebar">
+
+    <div class="panel-card">
+      <h3>Cuenta y monto</h3>
+
+      <div id="panel-no-accounts" class="form-error" style="margin-bottom:16px;">
+        <span>⚠</span>
+        <span>Todavía no tienes ninguna cuenta. <a href="dashboard.html" style="color:inherit; text-decoration:underline;">Crea una en el dashboard</a> para poder operar aquí.</span>
+      </div>
+
+      <div id="panel-account-fields">
+        <div class="field">
+          <label for="panel-account">Cuenta</label>
+          <select id="panel-account"></select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="panel-amount">Monto a invertir</label>
+          <input id="panel-amount" type="number" step="0.01" min="1" placeholder="50" value="50" />
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <h3>Duración</h3>
+      <div class="duration-pills" id="duration-pills">
+        <button type="button" class="duration-pill" data-seconds="30">30s</button>
+        <button type="button" class="duration-pill is-active" data-seconds="60">1min</button>
+        <button type="button" class="duration-pill" data-seconds="120">2min</button>
+        <button type="button" class="duration-pill" data-seconds="300">5min</button>
+      </div>
+
+      <div class="payout-info">
+        <span>Retorno si aciertas</span>
+        <strong id="panel-payout-percent">+85%</strong>
+      </div>
+      <div class="payout-info" id="panel-payout-amount-row">
+        <span>Ganarías</span>
+        <strong id="panel-payout-amount">$0.00</strong>
+      </div>
+
+      <div class="direction-buttons">
+        <button type="button" class="btn btn-buy btn-direction" id="btn-higher">
+          <span>▲ COMPRA</span>
+          <span class="direction-sub">Ganas si el precio sube</span>
+        </button>
+        <button type="button" class="btn btn-sell btn-direction" id="btn-lower">
+          <span>▼ VENDE</span>
+          <span class="direction-sub">Ganas si el precio baja</span>
+        </button>
+      </div>
+
+      <div id="panel-order-error" class="form-error" style="margin-top:14px; margin-bottom:0;">
+        <span>⚠</span>
+        <span id="panel-order-error-text"></span>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <h3>Operaciones en curso</h3>
+      <div class="active-options-list" id="active-options-list"></div>
+      <div class="empty-state" id="active-options-empty" style="padding:20px 0;">
+        <div>No tienes operaciones abiertas en este momento.</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Historial -->
+  <section class="section" style="grid-column: 1 / -1;">
+    <div class="section-header">
+      <div>
+        <h2>Historial de operaciones Sube/Baja</h2>
+        <div class="subtitle">Resultado de tus últimas operaciones en el panel de trading.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <table class="ticker-table" id="options-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Activo</th>
+            <th>Dirección</th>
+            <th style="text-align:right;">Monto</th>
+            <th style="text-align:right;">Entrada</th>
+            <th style="text-align:right;">Salida</th>
+            <th style="text-align:right;">P/L</th>
+            <th style="text-align:right;">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="options-body"></tbody>
+      </table>
+      <div class="empty-state" id="options-empty" style="display:none;">
+        <div class="icon">📊</div>
+        <div>Todavía no tienes operaciones. Abre la primera con los botones SUBE / BAJA.</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/trading-panel.js"></script>
+</body>
+</html>

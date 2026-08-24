@@ -32,6 +32,71 @@ así no hay que repetir el contexto en cada conversación.
 - Ticker de cripto: los precios parpadean en verde/rojo cuando cambian
   entre actualizaciones (cada 15s) — el parpadeo refleja el movimiento real
   de CoinGecko, no un efecto simulado.
+- **Fase 0 (fundamento de datos) — holdings**: cada cuenta puede tener
+  posiciones abiertas por activo (cantidad + precio medio de compra).
+- **Comprar / Vender v1**: botones COMPRAR (verde) y VENDER (rojo) en el
+  ticker de cripto y en cada posición abierta. Comprar descuenta el total
+  del balance de la cuenta elegida; vender lo acredita de vuelta. El precio
+  usado es el real de CoinGecko que el usuario ve en pantalla. Las
+  posiciones abiertas muestran cantidad, precio de compra, precio actual y
+  P/L recalculado en vivo cada vez que el ticker se actualiza.
+- Cambiar contraseña disponible desde el **menú de usuario** en la barra
+  superior (requiere la contraseña actual) — ver nota más abajo.
+- Los comprobantes de depósito/retiro muestran un número de referencia
+  aleatorio (no el ID interno) para que se sienta parte de un sistema con
+  miles de registros.
+- La barra superior muestra una insignia "★ Zenith Investor" junto al
+  nombre de usuario.
+- Los formularios de Depósitos y Retiros piden el **número de celular**
+  como método de contacto principal (antes pedían correo o WhatsApp por
+  igual). Retiros ahora también guarda ese contacto en el historial.
+- **Panel de Trading estilo IQ Option v1** (sección 14): página nueva
+  (`trading-panel.html`), accesible desde un banner destacado en el
+  dashboard. Gráfico de velas con histórico real de las últimas 24h vía
+  CoinGecko (`/coins/{id}/ohlc`), selector de activo (BTC/ETH/BNB/SOL/XRP),
+  4 duraciones (30s/1min/2min/5min), monto libre, botones grandes SUBE/BAJA
+  y retorno fijo del 85%. Usa el **mismo balance** de la cuenta elegida (no
+  un saldo aparte): al abrir la operación se descuenta el monto de
+  inmediato, y al vencer el tiempo se liquida sola contra el precio real de
+  CoinGecko en ese momento — si acierta recibe el monto + 85%, si no, pierde
+  lo apostado (empate = se devuelve el monto). Las operaciones abiertas
+  muestran una cuenta regresiva en vivo y se retoman solas si se recarga la
+  página antes de que venzan. Historial completo debajo del panel.
+- **Menú de usuario (dashboard)**: el botón suelto "Cambiar contraseña" que
+  vivía en la barra superior se quitó — ahora vive dentro de un menú
+  desplegable que se abre al hacer click en el chip del usuario (avatar +
+  nombre, ej. "wizzard"/"W"). El menú incluye "Cambiar contraseña" y
+  "Cerrar sesión" (mismos `id`s de antes, así que la lógica que ya
+  funcionaba no cambió) y es el lugar donde deben ir todos los ajustes de
+  cuenta que se agreguen a futuro (tema, correo, etc.) en vez de seguir
+  agregando botones sueltos a la barra superior. Se cierra al hacer click
+  afuera, con Escape, o al elegir una opción.
+- **Animación "invest-rain" (pantalla de acceso) — fix de visibilidad
+  (2 rondas)**: la franja donde caen los símbolos se calculaba mal.
+  Primera causa: el cálculo medía los contenedores `<div>` de bloque/flex
+  (que por defecto ocupan todo el ancho disponible aunque el texto de
+  adentro sea angosto) en vez de medir el texto/tarjetas mismos — ya
+  corregido. Segunda causa (la que realmente afectaba a Lucas, encontrada
+  después): incluso midiendo bien el texto, en anchos de ventana muy
+  comunes en laptops (1200-1366px) la franja libre que quedaba a la
+  derecha era de apenas 20-90px, por debajo del mínimo de 50px que el
+  código exigía para dibujar algo — así que en esas ventanas no aparecía
+  nada, silenciosamente. Ahora el mínimo bajó a 18px y los símbolos se
+  achican automáticamente en franjas angostas para no recortarse contra
+  el borde, así que prácticamente siempre hay algo visible (probado de
+  900px a 1920px de ancho). Por debajo de 860px el panel izquierdo
+  completo se oculta (comportamiento ya existente, no solo la lluvia).
+
+> Pendiente de esta misma sección 10 (no bloqueante): un *ledger* unificado
+> que junte depósitos + retiros + compras + ventas + operaciones Sube/Baja
+> en una sola vista de historial — hoy cada uno vive en su propia tabla
+> (`trades`/`options` sí quedan registrados en el backend, pero todavía no
+> tienen una pantalla unificada). El panel de activos personalizados
+> (sección 11) y los widgets de "actividad de mercado" (sección 12) siguen
+> sin construir. La "mejor construcción de los botones" pedida por Lucas se
+> aplicó de forma puntual (iconos en los botones principales del dashboard,
+> banner de acceso al panel de trading, botones SUBE/BAJA grandes) — el
+> rediseño visual general sigue pendiente como tarea aparte.
 
 Todo lo que sigue es la especificación objetivo — se construye por fases
 (ver "Roadmap" al final), no de una sola vez.
@@ -237,11 +302,11 @@ USER
 No se construye todo de una vez — cada fase depende de la anterior.
 Marcar con [x] cuando una fase quede terminada.
 
-- [ ] **Fase 0 — Fundamento de datos**: agregar el concepto de *holdings*
-      (posiciones por activo dentro de una cuenta: cantidad, precio medio,
-      fecha de compra) y un *ledger* unificado (una tabla que registra
-      todo movimiento: depósito, retiro, compra, venta). Todo lo demás se
-      apoya en esto.
+- [x] **Fase 0 — Fundamento de datos**: holdings (posiciones por activo,
+      cantidad + precio medio) y el motor de compra/venta ya están
+      construidos. Falta la parte de *ledger unificado* como pantalla
+      propia (hoy depósitos/retiros/compras/ventas viven cada uno en su
+      tabla) — se hace en la Fase 3 junto con Retiros.
 - [ ] **Fase 1 — Dashboard real**: capital depositado, valor de cartera,
       P/L absoluto y %, evolución día/semana/mes/desde el inicio,
       distribución por activo, última actualización.
@@ -261,15 +326,131 @@ Marcar con [x] cuando una fase quede terminada.
 Depósitos v1 y Retiros v1 (ya construidos) se revisan y extienden en la
 Fase 0/3 para que sus estados coincidan con el resto del ledger.
 
-## Pendiente: ajuste manual de ganancia/pérdida (admin)
+## 10. Compra y venta (motor de trading simulado)
 
-Pedido: poder modificarle a un cliente su ganancia en una acción o inversión
-para cambiar su saldo en la cuenta — útil para simular resultados de
-mercado en las pruebas.
+- Botón **COMPRAR** en verde, botón **VENDER** en rojo.
+- Comprar descuenta el valor de la operación del saldo disponible de la
+  cuenta. Vender acredita el valor correspondiente de vuelta al saldo.
+- Se opera sobre precios reales del ticker de cripto (CoinGecko) — el
+  movimiento de precio que mueve la ganancia/pérdida es real, no inventado.
+- Posiciones abiertas visibles con: activo, cantidad, precio de compra,
+  precio actual, y ganancia/pérdida (P/L) recalculada en vivo.
+- Esto requiere el concepto de *holding* (posición por activo dentro de una
+  cuenta) que hoy no existe — una cuenta solo tiene `balance`/`equity`
+  globales. Es exactamente la **Fase 0** del roadmap: holdings + ledger
+  unificado. Todo lo demás de esta sección se construye sobre eso.
 
-Esto necesita el concepto de *holding* (posición por activo) que todavía no
-existe — hoy una cuenta solo tiene `balance` y `equity` globales, no
-posiciones individuales por activo. Se construye como parte de la
-**Fase 0** (ver roadmap arriba): una vez existan los holdings, este ajuste
-manual será una edición directa sobre el holding, que recalcula el balance/
-equity de la cuenta automáticamente.
+## 11. Panel de activos personalizados (demo/admin)
+
+Para que la cuenta demo se sienta como un simulador completo tipo IQ
+Option, además de los activos de cripto reales:
+
+- Crear activos nuevos (nombre, símbolo, precio inicial).
+- Editar nombre, precio y otras características de un activo existente.
+- Simular manualmente que el precio de un activo sube o baja — control
+  directo, sin depender de un mercado real detrás.
+- Las posiciones abiertas sobre esos activos reflejan automáticamente la
+  ganancia/pérdida según el precio simulado (mismo motor de la sección 10).
+- Se compran/venden con el mismo saldo virtual que los activos reales.
+- Todo elemento de un activo personalizado debe decir claramente
+  "Simulado" / "Demo" para no confundirse con un activo real.
+
+> Nota de secuencia: la sección 10 (comprar/vender con precios reales de
+> cripto) se construye primero porque no depende de un panel nuevo — solo
+> del motor de holdings. El panel de activos personalizados de esta
+> sección se agrega después, reutilizando el mismo motor de compra/venta.
+
+## 12. Actividad de mercado (elementos para incentivar el uso)
+
+Widgets con temática financiera para que la plataforma se sienta viva,
+siempre etiquetados como demo/simulado:
+
+- Anuncios de nuevos activos disponibles.
+- Noticias / actualizaciones del mercado.
+- Sección de "oportunidades de inversión".
+- Avisos de movimientos importantes de precio.
+- Indicadores de tendencia (activos al alza / a la baja).
+- Mensajes promocionales de la plataforma.
+
+## 13. Cuenta y seguridad
+
+- Opción para cambiar la contraseña desde el perfil/configuración.
+- El campo de contacto en Depósitos/Retiros debe pedir el **número de
+  celular como método principal** (en vez de tratarlo igual que un correo).
+
+## 14. Panel de trading estilo IQ Option — v1 construido
+
+Inspirado en la captura que Lucas compartió de IQ Option: un panel dedicado
+con gráfico de velas, selector de tiempo, monto, y botones "Sube"/"Baja"
+con retorno esperado. Decisiones confirmadas con Lucas:
+
+- Vive en su propia página dentro del sitio (`trading-panel.html`), no en
+  una ventana emergente — se accede desde un banner en el dashboard.
+- Gráfico de velas con datos históricos reales de CoinGecko (endpoint
+  `/coins/{id}/ohlc`, público, sin API key, últimas 24h) — no inventados.
+  Puede tener minutos/horas de rezago frente al segundo exacto, cosa que
+  Lucas confirmó que está bien.
+- Mecánica "Sube/Baja" (internamente `higher`/`lower`, mostrado en pantalla
+  como botones **COMPRA** (verde, gana si sube) y **VENDE** (rojo, gana si
+  baja) por pedido de Lucas): el usuario elige monto y una duración corta
+  (30s a 5min); si el precio al vencer el tiempo es mayor o menor que el de
+  entrada según lo elegido, gana un retorno fijo del 85%; si no, pierde el
+  monto apostado (empate devuelve el monto). Se resuelve contra el precio
+  real de CoinGecko de ese momento.
+- Si el usuario todavía no tiene ninguna cuenta creada, el panel muestra un
+  aviso claro ("Todavía no tienes ninguna cuenta — créala en el dashboard")
+  en vez de dejar el selector de cuenta vacío sin explicación, y deshabilita
+  el resto de los controles hasta que exista al menos una cuenta.
+- Usa el **mismo balance** que el resto de la plataforma (cuentas ya
+  existentes), no un saldo aparte — así todo el dinero simulado de Lucas
+  vive en un solo lugar.
+- Pendiente futuro (no bloqueante): sumar esta actividad al ledger
+  unificado cuando se construya (ver nota en "Estado actual").
+
+## Restricciones de seguridad (no negociables)
+
+- **Nunca** se construye un formulario que pida número de tarjeta completo,
+  CVV o fecha de expiración para que un visitante real lo llene en el sitio
+  público desplegado — eso es funcionalmente una página de captura de
+  datos de pago, sin importar la intención. El botón "Pagar con tarjeta"
+  del modal de Depositar se queda deshabilitado ("próximamente") hasta que
+  exista un procesador de pago real detrás, o en su defecto solo pide datos
+  no sensibles claramente marcados como simulados.
+- Por la misma razón, **no** se recolecta número de cédula/documento de
+  identidad real a través de un formulario en el sitio público. Si se llega
+  a la Fase 7 (Perfil/Verificación), se simula con archivos de prueba, como
+  ya quedó anotado en la sección 9.
+
+## Reglas de diseño
+
+- Sin botones flotantes que queden pegados en pantalla todo el tiempo
+  (fuera de la barra superior fija).
+- Colores no saturados — profesional, agradable de ver, práctico.
+- Los números de referencia de un comprobante (depósito/retiro) deben
+  verse como parte de un sistema con miles de registros: se genera un
+  número aleatorio grande (rango aproximado 112.125–999.999) en vez de
+  mostrar el ID secuencial interno de la base de datos.
+- El nombre de usuario que hoy aparece como texto plano ("demo") en la
+  barra superior se reemplaza por algo con mejor diseño — ej. una
+  insignia tipo "Zenith Investor" en vez del username crudo.
+- Paleta: el dorado (`--gold`, tomado del logo) es el segundo color de
+  marca, reservado para elementos premium/branding (insignias, etiquetas,
+  acentos puntuales) — el azul (`--accent`) sigue siendo el único color de
+  acción/interacción (botones, enlaces, estados activos). No mezclar los
+  dos usos.
+- Iconos decorativos (tarjetas de confianza, callouts) van como SVG en
+  línea, monocromos (`stroke="currentColor"`), nunca emoji del sistema —
+  el render de emoji varía por SO/navegador y rompe la consistencia visual
+  que se busca en una plataforma "premium + institucional".
+- Pantalla de acceso (`index.html`) reescrita en agosto 2026 para sonar
+  como una plataforma financiera institucional y no solo una demo de IA:
+  título "Invierte en los mercados globales con inteligencia.", tres
+  tarjetas de confianza (Seguridad / Mercados globales / Análisis
+  inteligente) con icono+título+descripción reemplazando los antiguos
+  stats numéricos, tarjeta inferior renombrada "Información inteligente
+  para decisiones informadas" con etiqueta dorada "Tecnología integrada"
+  (ya no se presenta como anuncio de "Powered by OpenAI"), pestaña "Crear
+  cuenta" renombrada a "Abrir una cuenta", botón de login con gradiente
+  azul/sombra sutil (`.btn-hero`) y aviso discreto "🔒 Conexión segura"
+  debajo. La IA sigue existiendo (ver sección 8) pero deja de ser el
+  mensaje principal de la marca.

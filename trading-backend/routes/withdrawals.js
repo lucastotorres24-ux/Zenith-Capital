@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
 
 // POST /api/withdrawals -> crear una nueva solicitud de retiro
 router.post('/', (req, res) => {
-  const { method, amount } = req.body;
+  const { method, amount, contact } = req.body;
 
   if (!ALLOWED_METHODS.includes(method)) {
     return res.status(400).json({ error: 'Selecciona un método de retiro válido' });
@@ -31,10 +31,15 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'El monto debe ser un número mayor a 0' });
   }
 
+  if (!contact || !String(contact).trim()) {
+    return res.status(400).json({ error: 'El número de celular es requerido para poder contactarte' });
+  }
+
   const withdrawal = createWithdrawal({
     userId: req.user.id,
     method,
     amount: parsedAmount,
+    contact: String(contact).trim(),
   });
 
   res.status(201).json(withdrawal);

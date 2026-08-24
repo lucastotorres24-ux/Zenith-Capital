@@ -28,7 +28,7 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'El banco es requerido' });
   }
   if (!contact || !String(contact).trim()) {
-    return res.status(400).json({ error: 'El correo o WhatsApp es requerido' });
+    return res.status(400).json({ error: 'El número de celular es requerido' });
   }
 
   const deposit = createDeposit({

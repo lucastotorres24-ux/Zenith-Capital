@@ -4,21 +4,35 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Zenith Capital — Dashboard</title>
+<link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
 </head>
 <body>
 
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">Z</span>
+    <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
     <span>Zenith Capital</span>
   </div>
   <div class="topbar-right">
-    <div class="user-chip">
-      <span class="user-avatar" id="user-initial">U</span>
-      <span id="user-name">—</span>
+    <div class="user-menu" id="user-menu">
+      <button class="user-menu-trigger" id="user-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+        <span class="user-avatar" id="user-initial">U</span>
+        <div class="user-chip-text">
+          <span id="user-name">—</span>
+          <span class="investor-badge">★ Zenith Investor</span>
+        </div>
+        <span class="user-menu-caret">▾</span>
+      </button>
+      <div class="user-menu-dropdown" id="user-menu-dropdown">
+        <button class="user-menu-item" id="open-change-password" type="button">
+          <span class="user-menu-item-icon">🔒</span> Cambiar contraseña
+        </button>
+        <button class="user-menu-item user-menu-item-danger" id="logout-btn" type="button">
+          <span class="user-menu-item-icon">↪</span> Cerrar sesión
+        </button>
+      </div>
     </div>
-    <button class="btn btn-ghost btn-sm" id="logout-btn">Cerrar sesión</button>
   </div>
 </header>
 
@@ -31,10 +45,20 @@
     </div>
     <div class="page-header-actions">
       <button class="btn btn-secondary" id="open-create-account">+ Nueva cuenta</button>
-      <button class="btn btn-secondary" id="open-withdraw-modal">RETIRAR</button>
-      <button class="btn btn-primary" id="open-deposit-modal">DEPOSITAR</button>
+      <button class="btn btn-secondary" id="open-withdraw-modal">🏦 RETIRAR</button>
+      <button class="btn btn-primary" id="open-deposit-modal">💰 DEPOSITAR</button>
     </div>
   </div>
+
+  <!-- Banner del panel de trading estilo IQ Option -->
+  <section class="trading-cta">
+    <div class="trading-cta-text">
+      <span class="trading-cta-tag">Nuevo</span>
+      <h2>Panel de Trading Zenith</h2>
+      <p class="subtitle">Opera Sube / Baja en tiempo reducido, con gráfico de velas y datos reales del mercado.</p>
+    </div>
+    <a class="btn btn-primary btn-lg" href="trading-panel.html">📊 Abrir panel de trading</a>
+  </section>
 
   <!-- Stat tiles -->
   <section class="stat-grid" id="stat-grid">
@@ -157,6 +181,7 @@
             <th>Fecha</th>
             <th>Método</th>
             <th>Monto</th>
+            <th>Contacto</th>
             <th>Estado</th>
           </tr>
         </thead>
@@ -171,12 +196,43 @@
     </div>
   </section>
 
+  <!-- Posiciones abiertas -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Posiciones abiertas</h2>
+        <div class="subtitle">Tus compras activas — ganancia/pérdida calculada en vivo con el precio real.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <table class="ticker-table" id="holdings-table">
+        <thead>
+          <tr>
+            <th>Activo</th>
+            <th style="text-align:right;">Cantidad</th>
+            <th style="text-align:right;">Precio compra</th>
+            <th style="text-align:right;">Precio actual</th>
+            <th style="text-align:right;">P/L</th>
+            <th style="text-align:right;">Acción</th>
+          </tr>
+        </thead>
+        <tbody id="holdings-body">
+          <!-- se llena por JS -->
+        </tbody>
+      </table>
+      <div class="empty-state" id="holdings-empty" style="display:none;">
+        <div class="icon">📈</div>
+        <div>Todavía no tienes posiciones abiertas. Compra un activo desde "Mercado cripto" abajo.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- Ticker de mercado -->
   <section class="section">
     <div class="section-header">
       <div>
         <h2>Mercado cripto</h2>
-        <div class="subtitle">Precios en vivo vía CoinGecko · se actualiza cada 60s</div>
+        <div class="subtitle">Precios en vivo vía CoinGecko · se actualiza cada 15s</div>
       </div>
       <span class="badge" id="ticker-status">cargando…</span>
     </div>
@@ -187,6 +243,7 @@
             <th>Activo</th>
             <th style="text-align:right;">Precio (USD)</th>
             <th style="text-align:right;">24h</th>
+            <th style="text-align:right;">Operar</th>
           </tr>
         </thead>
         <tbody id="ticker-body">
@@ -293,8 +350,9 @@
       </div>
 
       <div class="field">
-        <label for="deposit-contact">Correo electrónico o WhatsApp</label>
-        <input id="deposit-contact" placeholder="tu@correo.com o +57 300 1234567" required />
+        <label for="deposit-contact">Número de celular</label>
+        <input id="deposit-contact" type="tel" placeholder="+57 300 1234567" required />
+        <span class="field-hint">Te contactaremos por este número para confirmar tu depósito.</span>
       </div>
 
       <div class="modal-actions">
@@ -354,6 +412,12 @@
         <input id="withdraw-amount" type="number" step="0.01" min="0.01" placeholder="200" required />
       </div>
 
+      <div class="field">
+        <label for="withdraw-contact">Número de celular</label>
+        <input id="withdraw-contact" type="tel" placeholder="+57 300 1234567" required />
+        <span class="field-hint">Tu gestor de cuentas te contactará por este número.</span>
+      </div>
+
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" id="withdraw-modal-cancel">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="withdraw-modal-submit">Retirar</button>
@@ -370,6 +434,84 @@
       </p>
       <button type="button" class="btn btn-primary" id="withdraw-confirmation-close">Entendido</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal comprar/vender -->
+<div class="modal-overlay" id="trade-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="trade-modal-title">Comprar</h3>
+      <button class="modal-close" id="trade-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div id="trade-modal-error" class="form-error">
+      <span>⚠</span>
+      <span id="trade-modal-error-text"></span>
+    </div>
+
+    <form id="trade-form">
+      <div class="field">
+        <label for="trade-account">Cuenta</label>
+        <select id="trade-account" required></select>
+      </div>
+
+      <div class="field">
+        <label for="trade-asset-display">Activo</label>
+        <input id="trade-asset-display" disabled />
+      </div>
+
+      <div class="field">
+        <label for="trade-quantity">Cantidad</label>
+        <input id="trade-quantity" type="number" step="0.00000001" min="0.00000001" placeholder="0.01" required />
+      </div>
+
+      <div class="trade-total" id="trade-total">Total: —</div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="trade-modal-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="trade-modal-submit">Confirmar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal cambiar contraseña -->
+<div class="modal-overlay" id="password-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Cambiar contraseña</h3>
+      <button class="modal-close" id="password-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div id="password-modal-error" class="form-error">
+      <span>⚠</span>
+      <span id="password-modal-error-text"></span>
+    </div>
+    <div id="password-modal-success" class="form-success">
+      <span>✓</span>
+      <span id="password-modal-success-text"></span>
+    </div>
+
+    <form id="password-form">
+      <div class="field">
+        <label for="password-current">Contraseña actual</label>
+        <input id="password-current" type="password" required />
+      </div>
+      <div class="field">
+        <label for="password-new">Nueva contraseña</label>
+        <input id="password-new" type="password" minlength="8" required />
+      </div>
+      <div class="field">
+        <label for="password-confirm">Confirmar nueva contraseña</label>
+        <input id="password-confirm" type="password" minlength="8" required />
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="password-modal-cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="password-modal-submit">Actualizar</button>
+      </div>
+    </form>
   </div>
 </div>
 

@@ -1,6 +1,14 @@
 // Lógica del dashboard (dashboard.html): cuentas + ticker de cripto.
 
-const CRYPTO_IDS = ['bitcoin', 'ethereum', 'tether', 'binancecoin', 'solana', 'ripple'];
+// Lista de activos disponibles para operar. Se amplió a pedido de Lucas
+// para tener más opciones además de las 6 originales — incluye una entrada
+// de oro tokenizado (PAX Gold, respaldado 1:1 por oro físico real) para
+// quien quiera algo distinto a cripto.
+const CRYPTO_IDS = [
+  'bitcoin', 'ethereum', 'tether', 'binancecoin', 'solana', 'ripple',
+  'cardano', 'dogecoin', 'polkadot', 'chainlink', 'avalanche-2',
+  'litecoin', 'tron', 'bitcoin-cash', 'pax-gold',
+];
 const CRYPTO_META = {
   bitcoin: { symbol: 'BTC', name: 'Bitcoin' },
   ethereum: { symbol: 'ETH', name: 'Ethereum' },
@@ -8,13 +16,26 @@ const CRYPTO_META = {
   binancecoin: { symbol: 'BNB', name: 'BNB' },
   solana: { symbol: 'SOL', name: 'Solana' },
   ripple: { symbol: 'XRP', name: 'XRP' },
+  cardano: { symbol: 'ADA', name: 'Cardano' },
+  dogecoin: { symbol: 'DOGE', name: 'Dogecoin' },
+  polkadot: { symbol: 'DOT', name: 'Polkadot' },
+  chainlink: { symbol: 'LINK', name: 'Chainlink' },
+  'avalanche-2': { symbol: 'AVAX', name: 'Avalanche' },
+  litecoin: { symbol: 'LTC', name: 'Litecoin' },
+  tron: { symbol: 'TRX', name: 'TRON' },
+  'bitcoin-cash': { symbol: 'BCH', name: 'Bitcoin Cash' },
+  'pax-gold': { symbol: 'PAXG', name: 'Oro (PAX Gold)' },
 };
 const TICKER_REFRESH_MS = 15_000;
 
 let accountsCache = [];
 let depositsCache = [];
 let withdrawalsCache = [];
+let holdingsCache = [];
 let previousTickerPrices = {};
+let currentPrices = {};
+let tradeMode = 'buy';
+let tradeAssetId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
@@ -24,14 +45,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderUserChip();
   wireLogout();
+  wireUserMenu();
   wireModal();
   wireAiPanel();
   wireDepositModal();
   wireWithdrawModal();
+  wireTradeModal();
+  wirePasswordModal();
 
   loadAccounts();
   loadDeposits();
   loadWithdrawals();
+  loadHoldings();
   loadTicker();
   setInterval(loadTicker, TICKER_REFRESH_MS);
 });
@@ -54,6 +79,52 @@ function wireLogout() {
   });
 }
 
+// Menú desplegable del usuario (topbar): agrupa "Cambiar contraseña",
+// "Cerrar sesión" y cualquier ajuste futuro bajo un solo botón — el
+// chip con el nombre/inicial de quien inició sesión.
+function wireUserMenu() {
+  const menu = document.getElementById('user-menu');
+  const trigger = document.getElementById('user-menu-trigger');
+  const dropdown = document.getElementById('user-menu-dropdown');
+  if (!menu || !trigger || !dropdown) return;
+
+  function openMenu() {
+    dropdown.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    dropdown.classList.remove('is-open');
+    trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (dropdown.classList.contains('is-open')) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  });
+
+  // Cierra al hacer click en un ítem del menú (cambiar contraseña abre su
+  // propio modal aparte, y cerrar sesión redirige — en ambos casos el
+  // menú no debe quedar abierto).
+  dropdown.querySelectorAll('.user-menu-item').forEach((item) => {
+    item.addEventListener('click', () => closeMenu());
+  });
+
+  // Cierra al hacer click fuera del menú.
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target)) closeMenu();
+  });
+
+  // Cierra con la tecla Escape.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+}
+
 // ---------------------------------------------------------------------
 // Utilidades de formato
 // ---------------------------------------------------------------------
@@ -66,6 +137,14 @@ function money(value, currency = 'USD') {
 function compactMoney(value) {
   const n = Number(value) || 0;
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 });
+}
+
+// Número de referencia "de vitrina" para comprobantes de depósito/retiro:
+// se ve como parte de un sistema con miles de registros, en vez de mostrar
+// el ID secuencial interno (1, 2, 3...) de la base de datos.
+function randomReference() {
+  const n = Math.floor(112125 + Math.random() * (999999 - 112125));
+  return n.toLocaleString('es-ES');
 }
 
 function showToast(message, type = 'info') {
@@ -356,7 +435,7 @@ async function handleDepositSubmit(event) {
     document.getElementById('deposit-receipt-detail').innerHTML = `
       <strong>${money(deposit.amount)}</strong> · ${escapeHtml(deposit.bank)}<br>
       Contacto: ${escapeHtml(deposit.contact)}<br>
-      Referencia: #${deposit.id}
+      Referencia: #${randomReference()}
     `;
 
     loadDeposits();
@@ -460,6 +539,7 @@ async function handleWithdrawSubmit(event) {
   const payload = {
     method: document.getElementById('withdraw-method').value,
     amount: Number(document.getElementById('withdraw-amount').value),
+    contact: document.getElementById('withdraw-contact').value.trim(),
   };
 
   const submitBtn = document.getElementById('withdraw-modal-submit');
@@ -473,7 +553,7 @@ async function handleWithdrawSubmit(event) {
     document.getElementById('withdraw-confirmation').style.display = 'block';
     document.getElementById('withdraw-confirmation-detail').innerHTML = `
       <strong>${money(withdrawal.amount)}</strong> · ${escapeHtml(withdrawal.method)}<br>
-      Referencia: #${withdrawal.id}
+      Referencia: #${randomReference()}
     `;
 
     loadWithdrawals();
@@ -514,10 +594,244 @@ function renderWithdrawals(withdrawals) {
       <td>${new Date(w.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
       <td>${escapeHtml(w.method)}</td>
       <td>${money(w.amount)}</td>
+      <td>${escapeHtml(w.contact || '—')}</td>
       <td><span class="badge badge-${w.status}">${movementStatusLabel(w.status)}</span></td>
     `;
     body.appendChild(row);
   });
+}
+
+// ---------------------------------------------------------------------
+// Comprar / Vender (Fase 0: holdings + motor de trading sobre precios
+// reales de cripto)
+// ---------------------------------------------------------------------
+
+function wireTradeModal() {
+  const overlay = document.getElementById('trade-modal');
+  const form = document.getElementById('trade-form');
+
+  document.getElementById('trade-modal-close').addEventListener('click', closeTradeModal);
+  document.getElementById('trade-modal-cancel').addEventListener('click', closeTradeModal);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeTradeModal();
+  });
+
+  document.getElementById('trade-quantity').addEventListener('input', updateTradeTotal);
+  form.addEventListener('submit', handleTradeSubmit);
+}
+
+function openTradeModal(mode, assetId) {
+  const meta = CRYPTO_META[assetId];
+  const price = currentPrices[assetId];
+
+  if (!meta || !price) {
+    showToast('Todavía no hay precio disponible para este activo — espera unos segundos e intenta de nuevo.', 'error');
+    return;
+  }
+  if (accountsCache.length === 0) {
+    showToast('Crea una cuenta antes de operar.', 'error');
+    return;
+  }
+
+  tradeMode = mode;
+  tradeAssetId = assetId;
+
+  document.getElementById('trade-modal-title').textContent =
+    mode === 'buy' ? `Comprar ${meta.name}` : `Vender ${meta.name}`;
+  document.getElementById('trade-asset-display').value = `${meta.name} (${meta.symbol}) · ${money(price)}`;
+
+  const submitBtn = document.getElementById('trade-modal-submit');
+  submitBtn.textContent = mode === 'buy' ? 'Confirmar compra' : 'Confirmar venta';
+  submitBtn.classList.toggle('btn-buy', mode === 'buy');
+  submitBtn.classList.toggle('btn-sell', mode === 'sell');
+
+  const accountSelect = document.getElementById('trade-account');
+  accountSelect.innerHTML = accountsCache
+    .map((a) => `<option value="${a.id}">${escapeHtml(a.accountNumber)} · ${money(a.balance, a.currency)}</option>`)
+    .join('');
+
+  document.getElementById('trade-form').reset();
+  updateTradeTotal();
+  hideTradeModalError();
+  document.getElementById('trade-modal').classList.add('is-visible');
+  document.getElementById('trade-quantity').focus();
+}
+
+function closeTradeModal() {
+  document.getElementById('trade-modal').classList.remove('is-visible');
+}
+
+function showTradeModalError(message) {
+  document.getElementById('trade-modal-error-text').textContent = message;
+  document.getElementById('trade-modal-error').classList.add('is-visible');
+}
+function hideTradeModalError() {
+  document.getElementById('trade-modal-error').classList.remove('is-visible');
+}
+
+function updateTradeTotal() {
+  const price = currentPrices[tradeAssetId] || 0;
+  const quantity = Number(document.getElementById('trade-quantity').value) || 0;
+  document.getElementById('trade-total').textContent = `Total: ${money(price * quantity)}`;
+}
+
+async function handleTradeSubmit(event) {
+  event.preventDefault();
+  hideTradeModalError();
+
+  const meta = CRYPTO_META[tradeAssetId];
+  const price = currentPrices[tradeAssetId];
+  const payload = {
+    accountId: Number(document.getElementById('trade-account').value),
+    asset: tradeAssetId,
+    symbol: meta.symbol,
+    quantity: Number(document.getElementById('trade-quantity').value),
+    price,
+  };
+
+  const submitBtn = document.getElementById('trade-modal-submit');
+  submitBtn.disabled = true;
+
+  try {
+    if (tradeMode === 'buy') {
+      await Api.buyAsset(payload);
+      showToast(`Compra realizada: ${payload.quantity} ${meta.symbol}`, 'success');
+    } else {
+      await Api.sellAsset(payload);
+      showToast(`Venta realizada: ${payload.quantity} ${meta.symbol}`, 'success');
+    }
+    closeTradeModal();
+    loadAccounts();
+    loadHoldings();
+  } catch (err) {
+    showTradeModalError(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function loadHoldings() {
+  try {
+    holdingsCache = await Api.getHoldings();
+    renderHoldings(holdingsCache);
+  } catch (err) {
+    // Silencioso: un fallo aquí no debe tumbar el resto del dashboard.
+  }
+}
+
+function renderHoldings(holdings) {
+  const body = document.getElementById('holdings-body');
+  const empty = document.getElementById('holdings-empty');
+  const table = document.getElementById('holdings-table');
+
+  body.innerHTML = '';
+
+  if (holdings.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  holdings.forEach((h) => {
+    const meta = CRYPTO_META[h.asset] || { name: h.symbol, symbol: h.symbol };
+    const currentPrice = currentPrices[h.asset];
+    const hasPrice = typeof currentPrice === 'number';
+    const pl = hasPrice ? (currentPrice - h.avgPrice) * h.quantity : null;
+    const plUp = pl !== null && pl > 0;
+    const plDown = pl !== null && pl < 0;
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${escapeHtml(meta.name)} (${escapeHtml(meta.symbol)})</td>
+      <td style="text-align:right;">${h.quantity}</td>
+      <td style="text-align:right;">${money(h.avgPrice)}</td>
+      <td style="text-align:right;">${hasPrice ? money(currentPrice) : '—'}</td>
+      <td style="text-align:right; color:${plUp ? 'var(--good)' : plDown ? 'var(--critical)' : 'var(--text-muted)'}">
+        ${pl !== null ? `${plUp ? '▲' : plDown ? '▼' : '—'} ${money(pl)}` : '—'}
+      </td>
+      <td style="text-align:right;">
+        <button class="btn btn-sell btn-sm" data-action="sell-holding" data-asset="${h.asset}">Vender</button>
+      </td>
+    `;
+    body.appendChild(row);
+  });
+
+  body.querySelectorAll('[data-action="sell-holding"]').forEach((btn) => {
+    btn.addEventListener('click', () => openTradeModal('sell', btn.dataset.asset));
+  });
+}
+
+// ---------------------------------------------------------------------
+// Cambiar contraseña
+// ---------------------------------------------------------------------
+
+function wirePasswordModal() {
+  const overlay = document.getElementById('password-modal');
+  const form = document.getElementById('password-form');
+
+  document.getElementById('open-change-password').addEventListener('click', openPasswordModal);
+  document.getElementById('password-modal-close').addEventListener('click', closePasswordModal);
+  document.getElementById('password-modal-cancel').addEventListener('click', closePasswordModal);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closePasswordModal();
+  });
+
+  form.addEventListener('submit', handlePasswordSubmit);
+}
+
+function openPasswordModal() {
+  document.getElementById('password-form').reset();
+  hidePasswordModalError();
+  hidePasswordModalSuccess();
+  document.getElementById('password-modal').classList.add('is-visible');
+  document.getElementById('password-current').focus();
+}
+function closePasswordModal() {
+  document.getElementById('password-modal').classList.remove('is-visible');
+}
+function showPasswordModalError(message) {
+  document.getElementById('password-modal-error-text').textContent = message;
+  document.getElementById('password-modal-error').classList.add('is-visible');
+}
+function hidePasswordModalError() {
+  document.getElementById('password-modal-error').classList.remove('is-visible');
+}
+function showPasswordModalSuccess(message) {
+  document.getElementById('password-modal-success-text').textContent = message;
+  document.getElementById('password-modal-success').classList.add('is-visible');
+}
+function hidePasswordModalSuccess() {
+  document.getElementById('password-modal-success').classList.remove('is-visible');
+}
+
+async function handlePasswordSubmit(event) {
+  event.preventDefault();
+  hidePasswordModalError();
+  hidePasswordModalSuccess();
+
+  const currentPassword = document.getElementById('password-current').value;
+  const newPassword = document.getElementById('password-new').value;
+  const confirmPassword = document.getElementById('password-confirm').value;
+
+  if (newPassword !== confirmPassword) {
+    showPasswordModalError('La nueva contraseña y su confirmación no coinciden');
+    return;
+  }
+
+  const submitBtn = document.getElementById('password-modal-submit');
+  submitBtn.disabled = true;
+
+  try {
+    await Api.changePassword({ currentPassword, newPassword });
+    showPasswordModalSuccess('Contraseña actualizada correctamente');
+    document.getElementById('password-form').reset();
+  } catch (err) {
+    showPasswordModalError(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -598,6 +912,7 @@ function renderTicker(data) {
     const priceDelta = typeof prevPrice === 'number' ? entry.usd - prevPrice : 0;
     const flashClass = priceDelta > 0 ? 'price-flash-up' : priceDelta < 0 ? 'price-flash-down' : '';
     previousTickerPrices[id] = entry.usd;
+    currentPrices[id] = entry.usd;
 
     const row = document.createElement('tr');
     row.innerHTML = `
@@ -614,6 +929,10 @@ function renderTicker(data) {
       <td class="change-cell ${isUp ? 'is-up' : isDown ? 'is-down' : ''}">
         ${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(change).toFixed(2)}%
       </td>
+      <td style="text-align:right;">
+        <button class="btn btn-buy btn-sm" data-action="buy" data-id="${id}">Comprar</button>
+        <button class="btn btn-sell btn-sm" data-action="sell" data-id="${id}">Vender</button>
+      </td>
     `;
     body.appendChild(row);
   });
@@ -623,4 +942,14 @@ function renderTicker(data) {
   body.querySelectorAll('.price-flash-up, .price-flash-down').forEach((cell) => {
     setTimeout(() => cell.classList.remove('price-flash-up', 'price-flash-down'), 900);
   });
+
+  body.querySelectorAll('[data-action="buy"]').forEach((btn) => {
+    btn.addEventListener('click', () => openTradeModal('buy', btn.dataset.id));
+  });
+  body.querySelectorAll('[data-action="sell"]').forEach((btn) => {
+    btn.addEventListener('click', () => openTradeModal('sell', btn.dataset.id));
+  });
+
+  // Los precios cambiaron: refresca el P/L de las posiciones abiertas.
+  renderHoldings(holdingsCache);
 }

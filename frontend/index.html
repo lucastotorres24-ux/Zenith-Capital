@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Zenith Capital — Acceso</title>
+<link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
 </head>
 <body>
@@ -12,46 +13,57 @@
 
   <!-- Panel izquierdo: branding, no es funcional, es contexto/marca -->
   <aside class="auth-aside">
+    <canvas id="invest-rain" aria-hidden="true"></canvas>
+
     <div class="brand">
-      <span class="brand-mark">Z</span>
+      <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
       <span>Zenith Capital</span>
     </div>
 
-    <div>
-      <h1>Tu futuro financiero, potenciado por inteligencia artificial.</h1>
+    <div class="auth-copy">
+      <h1>Invierte en los mercados globales con inteligencia.</h1>
       <p>
-        Zenith Capital es una compañía de tecnología financiera: diseñamos
-        sistemas automatizados que leen el mercado y el comportamiento de tus
-        cuentas para ayudarte a entender, en segundos, hacia dónde se mueve
-        tu dinero.
+        Accede a herramientas profesionales, información de mercado y
+        tecnología diseñada para ayudarte a tomar decisiones financieras
+        informadas.
       </p>
 
       <div class="aside-stats">
         <div class="aside-stat">
-          <div class="value">1:200</div>
-          <div class="label">Apalancamiento máx.</div>
+          <div class="aside-stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6l7-3z"/></svg>
+          </div>
+          <div class="title">Seguridad</div>
+          <div class="label">Protección y tecnología para tu cuenta.</div>
         </div>
         <div class="aside-stat">
-          <div class="value">24/7</div>
-          <div class="label">Datos de mercado cripto</div>
+          <div class="aside-stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/></svg>
+          </div>
+          <div class="title">Mercados globales</div>
+          <div class="label">Accede a múltiples oportunidades.</div>
         </div>
         <div class="aside-stat">
-          <div class="value">IA</div>
-          <div class="label">Motor de análisis</div>
+          <div class="aside-stat-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="9"/><line x1="18" y1="20" x2="18" y2="5"/></svg>
+          </div>
+          <div class="title">Análisis inteligente</div>
+          <div class="label">Información para apoyar tus decisiones.</div>
         </div>
       </div>
     </div>
 
     <div class="ai-callout">
-      <div class="ai-callout-icon">✨</div>
+      <div class="ai-callout-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>
+      </div>
       <div>
-        <h3>Análisis impulsado por IA</h3>
+        <h3>Información inteligente para decisiones informadas</h3>
         <p>
-          Nuestro motor de insights usa la API de OpenAI para leer el estado
-          de tus cuentas y las condiciones del mercado, y explicártelo en
-          lenguaje simple — disponible dentro de tu dashboard.
+          Sigue los mercados, analiza información relevante y gestiona tu
+          experiencia desde una sola plataforma.
         </p>
-        <span class="ai-callout-tag">Powered by OpenAI</span>
+        <span class="ai-callout-tag">Tecnología integrada</span>
       </div>
     </div>
   </aside>
@@ -62,7 +74,7 @@
 
       <div class="tabs" role="tablist">
         <button class="tab-btn is-active" id="tab-login" role="tab" aria-selected="true">Iniciar sesión</button>
-        <button class="tab-btn" id="tab-register" role="tab" aria-selected="false">Crear cuenta</button>
+        <button class="tab-btn" id="tab-register" role="tab" aria-selected="false">Abrir una cuenta</button>
       </div>
 
       <div id="form-error" class="form-error">
@@ -72,8 +84,8 @@
 
       <!-- Login -->
       <section class="auth-panel is-active" id="panel-login">
-        <h2>Bienvenido de nuevo</h2>
-        <p class="subtitle">Ingresa a tu panel de cuentas.</p>
+        <h2>Bienvenido a Zenith Capital</h2>
+        <p class="subtitle">Accede a tu cuenta y gestiona tu experiencia en los mercados.</p>
 
         <form id="login-form" novalidate>
           <div class="field">
@@ -84,9 +96,10 @@
             <label for="login-password">Contraseña</label>
             <input id="login-password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
           </div>
-          <button type="submit" class="btn btn-primary btn-block" id="login-submit">
+          <button type="submit" class="btn btn-primary btn-block btn-hero" id="login-submit">
             Iniciar sesión
           </button>
+          <div class="secure-note">🔒 Conexión segura</div>
         </form>
 
         <p class="demo-hint">
@@ -123,5 +136,6 @@
 <script src="assets/js/config.js"></script>
 <script src="assets/js/api.js"></script>
 <script src="assets/js/auth.js"></script>
+<script src="assets/js/invest-rain.js"></script>
 </body>
 </html>

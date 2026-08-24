@@ -38,6 +38,13 @@
   --warning: #fab219;
   --warning-soft: rgba(250, 178, 25, 0.14);
 
+  /* Dorado — segundo color de marca (tomado del logo), reservado para
+     elementos premium/branding: insignias, etiquetas, acentos puntuales.
+     Las acciones e interacciones siguen usando --accent (azul). */
+  --gold: #c9a24d;
+  --gold-hover: #d9b563;
+  --gold-soft: rgba(201, 162, 77, 0.16);
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -125,8 +132,15 @@ button, input, select { font-family: inherit; }
 }
 .btn-danger:hover { background: var(--critical-soft); }
 
+.btn-buy { background: var(--good); color: #ffffff; }
+.btn-buy:hover { background: #0e8f0e; }
+
+.btn-sell { background: var(--critical); color: #ffffff; }
+.btn-sell:hover { background: #d65453; }
+
 .btn-block { width: 100%; }
 .btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-lg { padding: 13px 22px; font-size: 15px; }
 
 /* ---------------------------------------------------------------------- */
 /* Formularios                                                            */
@@ -183,6 +197,35 @@ button, input, select { font-family: inherit; }
 }
 .form-error.is-visible { display: flex; }
 
+.form-success {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: var(--good-soft);
+  border: 1px solid rgba(12, 163, 12, 0.35);
+  color: var(--good);
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+}
+.form-success.is-visible { display: flex; }
+
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.trade-total {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+  margin: -4px 0 16px;
+  color: var(--text-secondary);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Pantalla de autenticación (index.html)                                 */
 /* ---------------------------------------------------------------------- */
@@ -195,6 +238,7 @@ button, input, select { font-family: inherit; }
 
 .auth-aside {
   position: relative;
+  z-index: 0; /* fija un contexto de apilamiento propio para #invest-rain */
   padding: 56px;
   display: flex;
   flex-direction: column;
@@ -204,6 +248,16 @@ button, input, select { font-family: inherit; }
     radial-gradient(900px 500px at 100% 100%, rgba(25, 158, 112, 0.14), transparent 55%),
     var(--surface);
   border-right: 1px solid var(--border);
+}
+
+/* Símbolos de inversión "cayendo" — decoración sutil, no interactiva, en
+   tonos de gris para no competir con el resto del panel. Ver
+   assets/js/invest-rain.js. */
+#invest-rain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
 }
 
 .brand {
@@ -216,22 +270,22 @@ button, input, select { font-family: inherit; }
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  display: grid;
-  place-items: center;
-  font-size: 15px;
-  color: #fff;
-  font-weight: 800;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  flex: none;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .auth-aside h1 {
   font-size: 34px;
-  line-height: 1.2;
-  max-width: 420px;
-  margin: 40px 0 12px;
+  font-weight: 800;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+  max-width: 440px;
+  margin: 48px 0 14px;
 }
 
 .auth-aside p {
@@ -242,18 +296,40 @@ button, input, select { font-family: inherit; }
 
 .aside-stats {
   display: flex;
-  gap: 32px;
-  margin-top: 48px;
+  gap: 28px;
+  margin-top: 40px;
 }
 
-.aside-stat .value {
-  font-size: 22px;
+.aside-stat {
+  max-width: 150px;
+}
+
+.aside-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--gold-soft);
+  display: grid;
+  place-items: center;
+  color: var(--gold-hover);
+  margin-bottom: 10px;
+}
+.aside-stat-icon svg,
+.ai-callout-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.aside-stat .title {
+  font-size: 13px;
   font-weight: 700;
+  color: var(--text-primary);
 }
 .aside-stat .label {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 3px;
+  line-height: 1.45;
 }
 
 .aside-disclaimer {
@@ -270,10 +346,10 @@ button, input, select { font-family: inherit; }
   display: flex;
   gap: 14px;
   max-width: 420px;
-  padding: 18px;
+  padding: 20px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: linear-gradient(160deg, rgba(57, 135, 229, 0.12), rgba(25, 158, 112, 0.06));
+  background: linear-gradient(160deg, rgba(201, 162, 77, 0.10), rgba(57, 135, 229, 0.06));
 }
 
 .ai-callout-icon {
@@ -281,10 +357,10 @@ button, input, select { font-family: inherit; }
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: var(--accent-soft);
+  background: var(--gold-soft);
+  color: var(--gold-hover);
   display: grid;
   place-items: center;
-  font-size: 16px;
 }
 
 .ai-callout h3 {
@@ -303,8 +379,8 @@ button, input, select { font-family: inherit; }
   display: inline-block;
   font-size: 11px;
   font-weight: 700;
-  color: var(--accent-hover);
-  background: rgba(57, 135, 229, 0.16);
+  color: var(--gold-hover);
+  background: var(--gold-soft);
   padding: 3px 9px;
   border-radius: 999px;
   letter-spacing: 0.02em;
@@ -330,7 +406,32 @@ button, input, select { font-family: inherit; }
 .auth-card .subtitle {
   color: var(--text-secondary);
   font-size: 14px;
-  margin-bottom: 28px;
+  margin-bottom: 32px;
+}
+
+/* Botón principal de inicio de sesión: un poco más de presencia que un
+   .btn-primary normal — gradiente sutil, sombra azul discreta, hover. */
+.btn-hero {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(57, 135, 229, 0.28);
+  transition: background-color 150ms ease, box-shadow 150ms ease, transform 80ms ease;
+}
+.btn-hero:hover {
+  background: linear-gradient(135deg, var(--accent-hover), #74b0f0);
+  box-shadow: 0 8px 24px rgba(57, 135, 229, 0.38);
+}
+.btn-hero:disabled {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.secure-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  letter-spacing: 0.02em;
 }
 
 .tabs {
@@ -346,16 +447,18 @@ button, input, select { font-family: inherit; }
 .tab-btn {
   flex: 1;
   padding: 9px 0;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   font-weight: 600;
   font-size: 13px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .tab-btn.is-active {
   background: var(--surface-2);
+  border-color: var(--accent);
   color: var(--text-primary);
 }
 
@@ -412,6 +515,19 @@ button, input, select { font-family: inherit; }
   color: var(--text-secondary);
 }
 
+.user-chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.investor-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold-hover);
+  text-transform: uppercase;
+}
+
 .user-avatar {
   width: 28px;
   height: 28px;
@@ -422,6 +538,96 @@ button, input, select { font-family: inherit; }
   place-items: center;
   font-weight: 700;
   font-size: 12px;
+}
+
+/* Menú de usuario (topbar) — reemplaza el chip fijo + botones sueltos.
+   Al hacer click en el usuario se despliega "Cambiar contraseña" y
+   "Cerrar sesión" (y cualquier ajuste futuro) desde un solo lugar. */
+.user-menu {
+  position: relative;
+}
+
+.user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px 6px 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.user-menu-trigger:hover,
+.user-menu-trigger[aria-expanded="true"] {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.user-menu-caret {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 2px;
+  transition: transform 0.15s ease;
+}
+
+.user-menu-trigger[aria-expanded="true"] .user-menu-caret {
+  transform: rotate(180deg);
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 6px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 20;
+}
+
+.user-menu-dropdown.is-open {
+  display: flex;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.user-menu-item:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.user-menu-item-danger:hover {
+  background: var(--critical-soft);
+  color: var(--critical);
+}
+
+.user-menu-item-icon {
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
 }
 
 .page {
@@ -448,6 +654,39 @@ button, input, select { font-family: inherit; }
   font-size: 14px;
   margin: 0;
 }
+
+/* Banner de acceso al Panel de Trading (dashboard) ------------------------ */
+
+.trading-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  background:
+    radial-gradient(700px 240px at 0% 0%, rgba(57, 135, 229, 0.16), transparent 60%),
+    radial-gradient(700px 240px at 100% 100%, rgba(25, 158, 112, 0.12), transparent 60%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px 26px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-card);
+}
+.trading-cta-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gold-hover);
+  background: var(--gold-soft);
+  padding: 3px 9px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
+.trading-cta-text h2 { margin: 0 0 4px; font-size: 18px; }
+.trading-cta-text .subtitle { margin: 0; color: var(--text-secondary); font-size: 13px; }
 
 /* ---------------------------------------------------------------------- */
 /* Stat tiles                                                             */
@@ -785,6 +1024,227 @@ button, input, select { font-family: inherit; }
 .price-cell.price-flash-down { color: var(--critical); background: var(--critical-soft); }
 
 /* ---------------------------------------------------------------------- */
+/* Panel de Trading (trading-panel.html) — estilo opciones Sube/Baja      */
+/* ---------------------------------------------------------------------- */
+
+.panel-body {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 28px 64px;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 20px;
+  align-items: start;
+}
+
+.panel-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 560px;
+}
+
+.panel-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.asset-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.asset-tab {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.asset-tab:hover { background: var(--surface-hover); }
+.asset-tab.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.panel-price-display { text-align: right; }
+.panel-price-value {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.panel-price-change {
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.panel-price-change.is-up { color: var(--good); }
+.panel-price-change.is-down { color: var(--critical); }
+.panel-price-change.is-flat { color: var(--text-muted); }
+
+#panel-chart-container {
+  flex: 1;
+  min-height: 380px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--page-bg);
+}
+
+.panel-chart-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+.panel-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.panel-card h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+
+.duration-pills {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.duration-pill {
+  padding: 10px 0;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.duration-pill:hover { background: var(--surface-hover); }
+.duration-pill.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.duration-pill:disabled,
+.btn-direction:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#panel-amount:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.payout-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  margin: 4px 0 16px;
+}
+.payout-info strong { color: var(--good); }
+
+.direction-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-direction {
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 10px;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+}
+.btn-direction .direction-sub {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+  text-transform: none;
+}
+
+.active-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.active-option-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.active-option-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.active-option-asset { font-weight: 700; }
+.active-option-detail { color: var(--text-muted); font-size: 12px; }
+
+.active-option-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--warning);
+  flex: none;
+}
+.active-option-timer.is-settling { color: var(--text-muted); font-size: 12px; }
+
+.badge.badge-abierta { background: var(--warning-soft); color: #a87005; }
+.badge.badge-ganada { background: var(--good-soft); color: var(--good); }
+.badge.badge-perdida { background: var(--critical-soft); color: var(--critical); }
+.badge.badge-empate { background: var(--surface-2); color: var(--text-muted); }
+
+@media (max-width: 980px) {
+  .panel-body { grid-template-columns: 1fr; }
+  .panel-chart-card { min-height: 420px; }
+}
+
+/* ---------------------------------------------------------------------- */
 /* Modal                                                                  */
 /* ---------------------------------------------------------------------- */
 
@@ -867,6 +1327,7 @@ button, input, select { font-family: inherit; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .auth-shell { grid-template-columns: 1fr; }
   .auth-aside { display: none; }
+  .trading-cta { flex-direction: column; align-items: stretch; text-align: center; }
 }
 
 @media (max-width: 520px) {

@@ -114,4 +114,32 @@ const Api = {
   createWithdrawal(payload) {
     return this.request('/api/withdrawals', { method: 'POST', body: payload });
   },
+
+  getHoldings() {
+    return this.request('/api/trading/holdings');
+  },
+
+  buyAsset(payload) {
+    return this.request('/api/trading/buy', { method: 'POST', body: payload });
+  },
+
+  sellAsset(payload) {
+    return this.request('/api/trading/sell', { method: 'POST', body: payload });
+  },
+
+  changePassword(payload) {
+    return this.request('/api/auth/change-password', { method: 'POST', body: payload });
+  },
+
+  getOptions() {
+    return this.request('/api/trading/options');
+  },
+
+  openOption(payload) {
+    return this.request('/api/trading/options/open', { method: 'POST', body: payload });
+  },
+
+  resolveOption(id, payload) {
+    return this.request(`/api/trading/options/${id}/resolve`, { method: 'POST', body: payload });
+  },
 };
