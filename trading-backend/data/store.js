@@ -5,6 +5,45 @@
 
 const { load, save } = require('./db');
 
+// ---- Demora simulada de revisión manual (1-2 minutos) ----
+//
+// A pedido de Lucas: cuando él aprueba o rechaza algo desde el panel de
+// administrador, el cliente NO ve el cambio al instante — tarda entre 1 y
+// 2 minutos (al azar) en reflejarse, para que se sienta como una revisión
+// humana real y no como un robot aprobando en cero segundos. Aplica
+// siempre, para cualquier usuario (no es algo especial de sus pruebas).
+//
+// Cómo funciona por dentro: al aprobar/rechazar, el registro (depósito,
+// retiro u operación) NO se modifica todavía — solo se le anota qué
+// decisión tomó Lucas (`pendingAction`/`pendingPayload`) y cuándo debe
+// aplicarse de verdad (`applyAt`). El registro sigue viéndose "en
+// proceso" para el usuario durante toda esa ventana. `runDueAdminActions`
+// revisa en cada request si ya se cumplió ese plazo y, si es así, recién
+// ahí mueve el balance/holdings y pasa el registro a su estado final.
+//
+// Se resuelve así (revisando en cada request, sin setTimeout) para que
+// sea robusto si el servidor se reinicia o se duerme un rato — no
+// depende de que el proceso de Node siga vivo sin interrupción durante
+// toda la ventana de espera.
+const ADMIN_DELAY_MIN_MS = 60 * 1000;
+const ADMIN_DELAY_MAX_MS = 120 * 1000;
+
+function computeApplyAt() {
+  const delay = ADMIN_DELAY_MIN_MS + Math.random() * (ADMIN_DELAY_MAX_MS - ADMIN_DELAY_MIN_MS);
+  return new Date(Date.now() + delay).toISOString();
+}
+
+// Los campos `pendingAction`/`pendingPayload`/`applyAt`/`adminDecidedAt`
+// son detalles internos de la demora simulada (ver arriba) — no se le
+// muestran al usuario dueño del registro, para que de verdad se sienta
+// como una revisión en curso y no se le "spoilee" ni cuándo se resuelve
+// ni el monto final que Lucas dejó editado. Las vistas del ADMIN
+// (getPendingDeposits, getAllUsersAdminView, etc.) no pasan por acá.
+function stripPendingInternals(record) {
+  const { pendingAction, pendingPayload, applyAt, adminDecidedAt, ...publicRecord } = record;
+  return publicRecord;
+}
+
 // ---- Users ----
 
 function findUserByUsername(username) {
@@ -24,6 +63,7 @@ function createUser({ username, passwordHash, fullName, email, phone, termsAccep
     birthDate: null,
     address: null,
     termsAcceptedAt,
+    createdAt: new Date().toISOString(),
   };
   db.users.push(user);
   save(db);
@@ -119,13 +159,14 @@ function getDepositsByUser(userId) {
   const db = load();
   return db.deposits
     .filter((d) => d.userId === userId)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(stripPendingInternals);
 }
 
 function getPendingDeposits() {
   const db = load();
   return db.deposits
-    .filter((d) => d.status === 'en_proceso')
+    .filter((d) => d.status === 'en_proceso' && !d.pendingAction)
     .map((d) => ({ ...d, username: findUserById(d.userId)?.username || `usuario #${d.userId}` }))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
@@ -149,37 +190,68 @@ function createDeposit({ userId, amount, bank, contact }) {
   return deposit;
 }
 
+// Aprobar ya NO mueve el balance al instante: valida todo de una (para
+// avisarle a Lucas de inmediato si algo está mal) y deja el depósito
+// agendado — `finalizeDepositAction` es quien de verdad acredita el
+// saldo, cuando se cumple `applyAt` (ver nota de "Demora simulada" arriba).
 function approveDeposit({ id, accountId, amount }) {
   const db = load();
   const deposit = db.deposits.find((d) => d.id === id);
   if (!deposit) return { error: 'Depósito no encontrado' };
-  if (deposit.status !== 'en_proceso') return { error: 'Este depósito ya fue resuelto' };
+  if (deposit.status !== 'en_proceso' || deposit.pendingAction) {
+    return { error: 'Este depósito ya fue resuelto' };
+  }
 
   const account = db.accounts.find((a) => a.id === accountId && a.userId === deposit.userId);
   if (!account) return { error: 'Selecciona una cuenta válida de este usuario' };
 
-  account.balance = Number((account.balance + amount).toFixed(2));
-
-  deposit.status = 'completado';
-  deposit.amount = amount;
-  deposit.accountId = accountId;
-  deposit.resolvedAt = new Date().toISOString();
+  deposit.pendingAction = 'approve';
+  deposit.pendingPayload = { accountId, amount };
+  deposit.applyAt = computeApplyAt();
+  deposit.adminDecidedAt = new Date().toISOString();
 
   save(db);
-  return { deposit, account };
+  return { deposit };
 }
 
 function rejectDeposit({ id }) {
   const db = load();
   const deposit = db.deposits.find((d) => d.id === id);
   if (!deposit) return { error: 'Depósito no encontrado' };
-  if (deposit.status !== 'en_proceso') return { error: 'Este depósito ya fue resuelto' };
+  if (deposit.status !== 'en_proceso' || deposit.pendingAction) {
+    return { error: 'Este depósito ya fue resuelto' };
+  }
 
-  deposit.status = 'rechazado';
-  deposit.resolvedAt = new Date().toISOString();
+  deposit.pendingAction = 'reject';
+  deposit.applyAt = computeApplyAt();
+  deposit.adminDecidedAt = new Date().toISOString();
 
   save(db);
   return { deposit };
+}
+
+// Aplica de verdad la decisión que Lucas ya tomó, una vez se cumple el
+// plazo — acá sí se mueve el balance. `db` se pasa por referencia (viene
+// de runDueAdminActions, que hace un solo load()/save() para todo).
+function finalizeDepositAction(db, deposit) {
+  if (deposit.pendingAction === 'approve') {
+    const { accountId, amount } = deposit.pendingPayload;
+    const account = db.accounts.find((a) => a.id === accountId && a.userId === deposit.userId);
+    if (!account) {
+      // La cuenta se borró mientras tanto: no hay a dónde acreditar. Se
+      // rechaza para no perder el registro en el limbo para siempre.
+      deposit.status = 'rechazado';
+    } else {
+      account.balance = Number((account.balance + amount).toFixed(2));
+      deposit.status = 'completado';
+      deposit.amount = amount;
+      deposit.accountId = accountId;
+    }
+  } else {
+    deposit.status = 'rechazado';
+  }
+  deposit.resolvedAt = new Date().toISOString();
+  deposit.applied = true;
 }
 
 // ---- Withdrawals ----
@@ -192,13 +264,14 @@ function getWithdrawalsByUser(userId) {
   const db = load();
   return db.withdrawals
     .filter((w) => w.userId === userId)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(stripPendingInternals);
 }
 
 function getPendingWithdrawals() {
   const db = load();
   return db.withdrawals
-    .filter((w) => w.status === 'en_proceso')
+    .filter((w) => w.status === 'en_proceso' && !w.pendingAction)
     .map((w) => ({ ...w, username: findUserById(w.userId)?.username || `usuario #${w.userId}` }))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
@@ -226,7 +299,9 @@ function approveWithdrawal({ id, accountId, amount }) {
   const db = load();
   const withdrawal = db.withdrawals.find((w) => w.id === id);
   if (!withdrawal) return { error: 'Retiro no encontrado' };
-  if (withdrawal.status !== 'en_proceso') return { error: 'Este retiro ya fue resuelto' };
+  if (withdrawal.status !== 'en_proceso' || withdrawal.pendingAction) {
+    return { error: 'Este retiro ya fue resuelto' };
+  }
 
   const account = db.accounts.find((a) => a.id === accountId && a.userId === withdrawal.userId);
   if (!account) return { error: 'Selecciona una cuenta válida de este usuario' };
@@ -234,28 +309,50 @@ function approveWithdrawal({ id, accountId, amount }) {
     return { error: 'Esa cuenta no tiene saldo suficiente para este retiro' };
   }
 
-  account.balance = Number((account.balance - amount).toFixed(2));
-
-  withdrawal.status = 'completado';
-  withdrawal.amount = amount;
-  withdrawal.accountId = accountId;
-  withdrawal.resolvedAt = new Date().toISOString();
+  withdrawal.pendingAction = 'approve';
+  withdrawal.pendingPayload = { accountId, amount };
+  withdrawal.applyAt = computeApplyAt();
+  withdrawal.adminDecidedAt = new Date().toISOString();
 
   save(db);
-  return { withdrawal, account };
+  return { withdrawal };
 }
 
 function rejectWithdrawal({ id }) {
   const db = load();
   const withdrawal = db.withdrawals.find((w) => w.id === id);
   if (!withdrawal) return { error: 'Retiro no encontrado' };
-  if (withdrawal.status !== 'en_proceso') return { error: 'Este retiro ya fue resuelto' };
+  if (withdrawal.status !== 'en_proceso' || withdrawal.pendingAction) {
+    return { error: 'Este retiro ya fue resuelto' };
+  }
 
-  withdrawal.status = 'rechazado';
-  withdrawal.resolvedAt = new Date().toISOString();
+  withdrawal.pendingAction = 'reject';
+  withdrawal.applyAt = computeApplyAt();
+  withdrawal.adminDecidedAt = new Date().toISOString();
 
   save(db);
   return { withdrawal };
+}
+
+function finalizeWithdrawalAction(db, withdrawal) {
+  if (withdrawal.pendingAction === 'approve') {
+    const { accountId, amount } = withdrawal.pendingPayload;
+    const account = db.accounts.find((a) => a.id === accountId && a.userId === withdrawal.userId);
+    if (!account || amount > account.balance) {
+      // La cuenta desapareció o ya no tiene saldo suficiente (pudo cambiar
+      // durante la espera): se rechaza en vez de dejar saldo en negativo.
+      withdrawal.status = 'rechazado';
+    } else {
+      account.balance = Number((account.balance - amount).toFixed(2));
+      withdrawal.status = 'completado';
+      withdrawal.amount = amount;
+      withdrawal.accountId = accountId;
+    }
+  } else {
+    withdrawal.status = 'rechazado';
+  }
+  withdrawal.resolvedAt = new Date().toISOString();
+  withdrawal.applied = true;
 }
 
 // ---- Holdings & Trades (compra/venta con aprobación manual) ----
@@ -283,13 +380,14 @@ function getTradesByUser(userId) {
   const db = load();
   return db.trades
     .filter((t) => t.userId === userId)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(stripPendingInternals);
 }
 
 function getPendingTrades() {
   const db = load();
   return db.trades
-    .filter((t) => t.status === 'pendiente')
+    .filter((t) => t.status === 'pendiente' && !t.pendingAction)
     .map((t) => ({ ...t, username: findUserById(t.userId)?.username || `usuario #${t.userId}` }))
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
@@ -324,7 +422,7 @@ function approveTrade({ id, quantity, price }) {
   const db = load();
   const trade = db.trades.find((t) => t.id === id);
   if (!trade) return { error: 'Operación no encontrada' };
-  if (trade.status !== 'pendiente') return { error: 'Esta operación ya fue resuelta' };
+  if (trade.status !== 'pendiente' || trade.pendingAction) return { error: 'Esta operación ya fue resuelta' };
 
   const account = db.accounts.find((a) => a.id === trade.accountId && a.userId === trade.userId);
   if (!account) return { error: 'La cuenta de esta operación ya no existe' };
@@ -334,6 +432,67 @@ function approveTrade({ id, quantity, price }) {
   if (trade.side === 'compra') {
     if (total > account.balance) {
       return { error: 'Esa cuenta no tiene saldo suficiente para aprobar esta compra' };
+    }
+  } else {
+    const holding = db.holdings.find(
+      (h) => h.accountId === trade.accountId && h.userId === trade.userId && h.asset === trade.asset
+    );
+    if (!holding || quantity > holding.quantity) {
+      return { error: 'Esa cuenta ya no tiene suficiente cantidad de este activo para aprobar esta venta' };
+    }
+  }
+
+  trade.pendingAction = 'approve';
+  trade.pendingPayload = { quantity, price, total };
+  trade.applyAt = computeApplyAt();
+  trade.adminDecidedAt = new Date().toISOString();
+
+  save(db);
+  return { trade };
+}
+
+function rejectTrade({ id }) {
+  const db = load();
+  const trade = db.trades.find((t) => t.id === id);
+  if (!trade) return { error: 'Operación no encontrada' };
+  if (trade.status !== 'pendiente' || trade.pendingAction) return { error: 'Esta operación ya fue resuelta' };
+
+  trade.pendingAction = 'reject';
+  trade.applyAt = computeApplyAt();
+  trade.adminDecidedAt = new Date().toISOString();
+
+  save(db);
+  return { trade };
+}
+
+// Re-valida contra el estado actual (pudo cambiar durante la espera de
+// 1-2 min: otra operación de por medio, etc.) antes de mover de verdad el
+// balance/holding — si ya no cuadra, se rechaza en vez de dejar algo
+// inconsistente (saldo negativo, cantidad negativa).
+function finalizeTradeAction(db, trade) {
+  if (trade.pendingAction !== 'approve') {
+    trade.status = 'rechazada';
+    trade.resolvedAt = new Date().toISOString();
+    trade.applied = true;
+    return;
+  }
+
+  const { quantity, price, total } = trade.pendingPayload;
+  const account = db.accounts.find((a) => a.id === trade.accountId && a.userId === trade.userId);
+
+  if (!account) {
+    trade.status = 'rechazada';
+    trade.resolvedAt = new Date().toISOString();
+    trade.applied = true;
+    return;
+  }
+
+  if (trade.side === 'compra') {
+    if (total > account.balance) {
+      trade.status = 'rechazada';
+      trade.resolvedAt = new Date().toISOString();
+      trade.applied = true;
+      return;
     }
     account.balance = Number((account.balance - total).toFixed(2));
 
@@ -362,7 +521,10 @@ function approveTrade({ id, quantity, price }) {
       (h) => h.accountId === trade.accountId && h.userId === trade.userId && h.asset === trade.asset
     );
     if (!holding || quantity > holding.quantity) {
-      return { error: 'Esa cuenta ya no tiene suficiente cantidad de este activo para aprobar esta venta' };
+      trade.status = 'rechazada';
+      trade.resolvedAt = new Date().toISOString();
+      trade.applied = true;
+      return;
     }
     account.balance = Number((account.balance + total).toFixed(2));
     holding.quantity = Number((holding.quantity - quantity).toFixed(8));
@@ -376,22 +538,38 @@ function approveTrade({ id, quantity, price }) {
   trade.total = total;
   trade.status = 'aprobada';
   trade.resolvedAt = new Date().toISOString();
-
-  save(db);
-  return { trade, account };
+  trade.applied = true;
 }
 
-function rejectTrade({ id }) {
+// Revisa los tres tipos de solicitud (depósitos, retiros, operaciones) y
+// aplica de verdad cualquiera cuyo plazo de espera ya se haya cumplido.
+// Se llama en cada request (ver server.js) en vez de con un setTimeout,
+// para que sea robusto a reinicios/al servidor durmiéndose un rato.
+function runDueAdminActions() {
   const db = load();
-  const trade = db.trades.find((t) => t.id === id);
-  if (!trade) return { error: 'Operación no encontrada' };
-  if (trade.status !== 'pendiente') return { error: 'Esta operación ya fue resuelta' };
+  const now = Date.now();
+  let changed = false;
 
-  trade.status = 'rechazada';
-  trade.resolvedAt = new Date().toISOString();
+  db.deposits.forEach((d) => {
+    if (d.pendingAction && !d.applied && d.applyAt && new Date(d.applyAt).getTime() <= now) {
+      finalizeDepositAction(db, d);
+      changed = true;
+    }
+  });
+  db.withdrawals.forEach((w) => {
+    if (w.pendingAction && !w.applied && w.applyAt && new Date(w.applyAt).getTime() <= now) {
+      finalizeWithdrawalAction(db, w);
+      changed = true;
+    }
+  });
+  db.trades.forEach((t) => {
+    if (t.pendingAction && !t.applied && t.applyAt && new Date(t.applyAt).getTime() <= now) {
+      finalizeTradeAction(db, t);
+      changed = true;
+    }
+  });
 
-  save(db);
-  return { trade };
+  if (changed) save(db);
 }
 
 // ---- Opciones Sube/Baja (panel estilo IQ Option) ----
@@ -581,6 +759,50 @@ function getRankForAmount(amount) {
   return tier || null; // null = todavía sin insignia (menos de 250)
 }
 
+// ---- Panel de "Usuarios registrados" (admin.html) ----
+//
+// Vista de solo lectura para Lucas: cada usuario que se registra aparece
+// acá con su perfil completo, sus cuentas/balances, su insignia
+// (aproximada, con el mismo cálculo de getInvestedProxyByUser — puede no
+// coincidir centavo a centavo con lo que ve el usuario, que usa precio en
+// vivo) y cuántos documentos tiene subidos. A propósito NO permite editar
+// datos personales del usuario desde acá — lo único editable desde el
+// panel de administrador son los montos/cantidades de las solicitudes
+// pendientes (ver "Aprobación manual" en PRODUCT_SPEC.md).
+function getAllUsersAdminView() {
+  const db = load();
+  return db.users
+    .map((u) => {
+      const accounts = db.accounts
+        .filter((a) => a.userId === u.id)
+        .map((a) => ({
+          id: a.id,
+          accountNumber: a.accountNumber,
+          accountType: a.accountType,
+          currency: a.currency,
+          balance: a.balance,
+        }));
+      const documentsCount = db.documents.filter((d) => d.userId === u.id).length;
+      const investedProxy = getInvestedProxyByUser(u.id);
+      const rank = getRankForAmount(investedProxy);
+      return {
+        id: u.id,
+        username: u.username,
+        fullName: u.fullName,
+        email: u.email,
+        phone: u.phone,
+        birthDate: u.birthDate,
+        address: u.address,
+        createdAt: u.createdAt || u.termsAcceptedAt || null,
+        accounts,
+        documentsCount,
+        investedProxy,
+        rank: rank ? { key: rank.key, label: rank.label } : null,
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
 module.exports = {
   findUserByUsername,
   createUser,
@@ -620,4 +842,6 @@ module.exports = {
   getInvestedProxyByUser,
   getRankForAmount,
   RANK_TIERS,
+  runDueAdminActions,
+  getAllUsersAdminView,
 };

@@ -65,8 +65,10 @@ function buildMessageText() {
 
 // Cada cuántos segundos (en promedio) aparece un mensaje nuevo cuando el
 // feed está "al día". Se agrega algo de variación (0.5x a 1.5x) para que
-// no se sienta perfectamente mecánico.
-const AVG_INTERVAL_SECONDS = 35;
+// no se sienta perfectamente mecánico. Lucas pidió que la comunidad se
+// sienta más activa/frecuente — antes eran 35s, ahora son 12s (el
+// frontend ya consulta cada 8s, así que casi siempre hay algo nuevo).
+const AVG_INTERVAL_SECONDS = 12;
 const MAX_MESSAGES_PER_CALL = 25; // evita ráfagas enormes tras mucho tiempo sin uso
 const MAX_STORED_MESSAGES = 300;
 

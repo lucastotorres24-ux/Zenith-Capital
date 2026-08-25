@@ -81,6 +81,9 @@ const Api = {
   adminGetDocuments() {
     return this.request('/api/admin/documents', { admin: true });
   },
+  adminGetUsers() {
+    return this.request('/api/admin/users', { admin: true });
+  },
   adminApproveDeposit(id, payload) {
     return this.request(`/api/admin/deposits/${id}/approve`, { method: 'PUT', body: payload, admin: true });
   },
@@ -289,5 +292,22 @@ const Api = {
 
   resolveOption(id, payload) {
     return this.request(`/api/trading/options/${id}/resolve`, { method: 'POST', body: payload });
+  },
+
+  // ---- Zenith (ZNT) — moneda propia simulada ----
+  getZenithSnapshot() {
+    return this.request('/api/market/zenith');
+  },
+
+  getZenithCandles(limit = 200) {
+    return this.request(`/api/market/zenith/candles?limit=${limit}`);
+  },
+
+  adminGetZenithConfig() {
+    return this.request('/api/admin/zenith-coin', { admin: true });
+  },
+
+  adminUpdateZenithConfig(payload) {
+    return this.request('/api/admin/zenith-coin', { method: 'PUT', body: payload, admin: true });
   },
 };

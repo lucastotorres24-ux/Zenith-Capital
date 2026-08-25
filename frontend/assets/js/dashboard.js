@@ -25,8 +25,22 @@ const CRYPTO_META = {
   tron: { symbol: 'TRX', name: 'TRON' },
   'bitcoin-cash': { symbol: 'BCH', name: 'Bitcoin Cash' },
   'pax-gold': { symbol: 'PAXG', name: 'Oro (PAX Gold)' },
+  // Zenith (ZNT): NO viene de CoinGecko (no está en CRYPTO_IDS, así que no
+  // se pide como parte del fetch masivo de precios reales) — es la moneda
+  // propia simulada de la plataforma, con su propio endpoint
+  // (loadZenithTicker más abajo). Se agrega acá igual para que el resto del
+  // código que ya sabe mostrar/operar cualquier activo (holdings, historial
+  // de operaciones, modal de comprar/vender) funcione con ZNT sin cambios.
+  zenith: { symbol: 'ZNT', name: 'Zenith' },
 };
 const TICKER_REFRESH_MS = 15_000;
+// El backend demora entre 1 y 2 minutos en aplicar de verdad lo que Lucas
+// aprueba/edita desde el panel de administrador (revisión manual simulada
+// — ver data/store.js), así que el dashboard vuelve a consultar cuentas,
+// depósitos, retiros, posiciones y operaciones cada cierto tiempo para que
+// ese cambio aparezca solo, sin que el usuario tenga que recargar la
+// página a mano.
+const OPERATIONAL_REFRESH_MS = 20_000;
 
 // Insignias Zenith: el rango se calcula en vivo con lo que el cliente tiene
 // invertido AHORA MISMO (balance de todas sus cuentas + valor de mercado de
@@ -65,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderUserChip();
   wireLogout();
   wireUserMenu();
+  wireThemeToggle();
   wireModal();
   wireAiPanel();
   wireAdvisoryPanel();
@@ -73,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireTradeModal();
   wireProfileModal();
   wireHoldingDetailModal();
+  wireZenithSection();
 
   loadAccounts();
   loadDeposits();
@@ -80,7 +96,16 @@ document.addEventListener('DOMContentLoaded', () => {
   loadHoldings();
   loadTrades();
   loadTicker();
+  loadZenithTicker();
   setInterval(loadTicker, TICKER_REFRESH_MS);
+  setInterval(loadZenithTicker, TICKER_REFRESH_MS);
+  setInterval(() => {
+    loadAccounts();
+    loadDeposits();
+    loadWithdrawals();
+    loadHoldings();
+    loadTrades();
+  }, OPERATIONAL_REFRESH_MS);
 });
 
 // ---------------------------------------------------------------------
@@ -145,6 +170,47 @@ function wireLogout() {
     Api.clearSession();
     window.location.href = 'index.html';
   });
+}
+
+// ---------------------------------------------------------------------
+// Modo claro/oscuro — el switch vive en el menú de usuario (junto a "Mi
+// perfil" y "Cerrar sesión", como pidió Lucas). El tema en sí se aplica
+// con [data-theme] en <html> y se guarda en localStorage, así que se
+// respeta en todas las páginas (un script chiquito al inicio del <head>
+// de cada una lo aplica antes de pintar, para que no haya parpadeo).
+// ---------------------------------------------------------------------
+
+const THEME_KEY = 'zenith_theme';
+
+function wireThemeToggle() {
+  const toggle = document.getElementById('theme-switch');
+  if (!toggle) return;
+  const icon = document.getElementById('theme-toggle-icon');
+
+  function syncSwitch() {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    toggle.setAttribute('aria-checked', String(isDark));
+    if (icon) icon.textContent = isDark ? '🌙' : '☀️';
+  }
+
+  toggle.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const next = isDark ? 'light' : 'dark';
+    if (next === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch (err) {
+      // Sin localStorage (modo privado, etc.) el tema simplemente no
+      // persiste entre visitas — no debe romper el resto de la página.
+    }
+    syncSwitch();
+  });
+
+  syncSwitch();
 }
 
 // Menú desplegable del usuario (topbar): agrupa "Cambiar contraseña",
@@ -705,6 +771,12 @@ function openTradeModal(mode, assetId) {
   tradeMode = mode;
   tradeAssetId = assetId;
 
+  // Limpia el formulario (cantidad de la vez anterior, etc.) ANTES de
+  // rellenar los campos de este activo — hacerlo después borraría lo que
+  // se acaba de escribir, porque .reset() también afecta al campo
+  // "Activo" (es de solo lectura, pero sigue siendo parte del <form>).
+  document.getElementById('trade-form').reset();
+
   document.getElementById('trade-modal-title').textContent =
     mode === 'buy' ? `Comprar ${meta.name}` : `Vender ${meta.name}`;
   document.getElementById('trade-asset-display').value = `${meta.name} (${meta.symbol}) · ${money(price)}`;
@@ -719,7 +791,6 @@ function openTradeModal(mode, assetId) {
     .map((a) => `<option value="${a.id}">${escapeHtml(a.accountNumber)} · ${money(a.balance, a.currency)}</option>`)
     .join('');
 
-  document.getElementById('trade-form').reset();
   updateTradeTotal();
   hideTradeModalError();
   document.getElementById('trade-modal').classList.add('is-visible');
@@ -1379,4 +1450,120 @@ function renderTicker(data) {
   // con eso, la insignia (depende del valor de mercado de las posiciones).
   renderHoldings(holdingsCache);
   updateRankBadge();
+}
+
+// ---------------------------------------------------------------------
+// Zenith (ZNT) — moneda propia simulada (no viene de CoinGecko)
+// ---------------------------------------------------------------------
+
+let zenithChart = null;
+let zenithCandleSeries = null;
+
+function wireZenithSection() {
+  document.getElementById('zenith-buy-btn').addEventListener('click', () => openTradeModal('buy', 'zenith'));
+  document.getElementById('zenith-sell-btn').addEventListener('click', () => openTradeModal('sell', 'zenith'));
+  document.getElementById('zenith-chart-btn').addEventListener('click', openZenithChartModal);
+
+  const overlay = document.getElementById('zenith-chart-modal');
+  document.getElementById('zenith-chart-modal-close').addEventListener('click', closeZenithChartModal);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeZenithChartModal();
+  });
+}
+
+async function loadZenithTicker() {
+  const statusEl = document.getElementById('zenith-status');
+  try {
+    const snapshot = await Api.getZenithSnapshot();
+    renderZenithSnapshot(snapshot);
+    statusEl.textContent = 'en vivo';
+    statusEl.style.color = 'var(--good)';
+  } catch (err) {
+    statusEl.textContent = 'sin conexión';
+    statusEl.style.color = 'var(--critical)';
+  }
+}
+
+function renderZenithSnapshot(snapshot) {
+  const prevPrice = currentPrices.zenith;
+  currentPrices.zenith = snapshot.price;
+
+  const priceEl = document.getElementById('zenith-price');
+  priceEl.textContent = money(snapshot.price);
+  if (typeof prevPrice === 'number' && prevPrice !== snapshot.price) {
+    priceEl.classList.remove('price-flash-up', 'price-flash-down');
+    // Forzar reflow para que la animación se reinicie si ya estaba aplicada.
+    void priceEl.offsetWidth;
+    priceEl.classList.add(snapshot.price > prevPrice ? 'price-flash-up' : 'price-flash-down');
+    setTimeout(() => priceEl.classList.remove('price-flash-up', 'price-flash-down'), 900);
+  }
+
+  const isUp = snapshot.change24h > 0;
+  const isDown = snapshot.change24h < 0;
+  const changeEl = document.getElementById('zenith-change');
+  changeEl.className = `delta ${isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat'}`;
+  changeEl.textContent = `${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(snapshot.change24h).toFixed(2)}% (24h)`;
+
+  document.getElementById('zenith-high').textContent = money(snapshot.high24h);
+  document.getElementById('zenith-low').textContent = money(snapshot.low24h);
+  document.getElementById('zenith-volume').textContent = compactMoney(snapshot.volume24h);
+  document.getElementById('zenith-marketcap').textContent = compactMoney(snapshot.marketCap);
+
+  // El precio cambió: refresca el P/L de cualquier posición abierta en ZNT.
+  renderHoldings(holdingsCache);
+  updateRankBadge();
+}
+
+function initZenithChart() {
+  if (zenithChart) return;
+  const container = document.getElementById('zenith-chart-container');
+  if (!window.LightweightCharts) {
+    container.innerHTML = '<div class="empty-state"><div>No se pudo cargar el gráfico (librería no disponible).</div></div>';
+    return;
+  }
+
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  zenithChart = LightweightCharts.createChart(container, {
+    layout: { background: { type: 'solid', color: 'transparent' }, textColor: isLight ? '#4c4b47' : '#c3c2b7' },
+    grid: {
+      vertLines: { color: isLight ? 'rgba(20,20,15,0.06)' : 'rgba(255,255,255,0.05)' },
+      horzLines: { color: isLight ? 'rgba(20,20,15,0.06)' : 'rgba(255,255,255,0.05)' },
+    },
+    rightPriceScale: { borderColor: isLight ? 'rgba(20,20,15,0.12)' : 'rgba(255,255,255,0.10)' },
+    timeScale: { borderColor: isLight ? 'rgba(20,20,15,0.12)' : 'rgba(255,255,255,0.10)', timeVisible: true, secondsVisible: false },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  });
+
+  zenithCandleSeries = zenithChart.addCandlestickSeries({
+    upColor: '#0ca30c',
+    downColor: '#e66767',
+    borderVisible: false,
+    wickUpColor: '#0ca30c',
+    wickDownColor: '#e66767',
+  });
+
+  const resize = () => zenithChart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+  window.addEventListener('resize', resize);
+  resize();
+}
+
+async function loadZenithChartData() {
+  if (!zenithCandleSeries) return;
+  try {
+    const candles = await Api.getZenithCandles(200);
+    zenithCandleSeries.setData(candles);
+    zenithChart.timeScale().fitContent();
+  } catch (err) {
+    // Silencioso: el precio en vivo y las operaciones no dependen del gráfico.
+  }
+}
+
+function openZenithChartModal() {
+  document.getElementById('zenith-chart-modal').classList.add('is-visible');
+  initZenithChart();
+  loadZenithChartData();
+}
+
+function closeZenithChartModal() {
+  document.getElementById('zenith-chart-modal').classList.remove('is-visible');
 }

@@ -6,6 +6,16 @@
 <title>Zenith Capital — Panel de Trading</title>
 <link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
+<script>
+  // Aplica el tema guardado ANTES de pintar la página, para que no haya un
+  // parpadeo del tema anterior al cargar (oscuro es el valor por defecto).
+  (function () {
+    try {
+      var saved = localStorage.getItem('zenith_theme');
+      if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    } catch (e) {}
+  })();
+</script>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>

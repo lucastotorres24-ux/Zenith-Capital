@@ -183,6 +183,171 @@
     document.getElementById('deposits-pending-count').textContent = String(data.deposits.length);
     document.getElementById('withdrawals-pending-count').textContent = String(data.withdrawals.length);
     document.getElementById('trades-pending-count').textContent = String(data.trades.length);
+
+    // Los documentos y la lista de usuarios no son tan urgentes como las
+    // colas de arriba (no hay nada que "vencer"), pero se recargan en el
+    // mismo ciclo de refresco para no complicar el código con timers
+    // aparte — así un usuario nuevo aparece solo, sin recargar la página.
+    try {
+      const documents = await Api.adminGetDocuments();
+      renderDocuments(documents);
+    } catch (err) {
+      // Si esto falla no debe tumbar el resto del panel — se reintenta
+      // solo en el próximo ciclo de refresco.
+    }
+    try {
+      const users = await Api.adminGetUsers();
+      renderUsers(users);
+    } catch (err) {
+      // Igual que arriba: se reintenta solo en el próximo ciclo.
+    }
+    try {
+      const zenith = await Api.adminGetZenithConfig();
+      renderZenithAdmin(zenith.config, zenith.snapshot);
+      document.getElementById('zenith-admin-status').textContent = 'en vivo';
+      document.getElementById('zenith-admin-status').style.color = 'var(--good)';
+    } catch (err) {
+      document.getElementById('zenith-admin-status').textContent = 'sin conexión';
+      document.getElementById('zenith-admin-status').style.color = 'var(--critical)';
+    }
+  }
+
+  // ---- Moneda Zenith (ZNT) ----
+
+  // Solo se rellenan los <select> con lo que diga el servidor la PRIMERA
+  // vez — si se hiciera en cada refresco de 15s, cualquier cambio que Lucas
+  // esté a mitad de elegir (pero no ha guardado todavía) se le borraría
+  // solo mientras el panel sigue actualizándose de fondo.
+  let zenithConfigLoaded = false;
+
+  function renderZenithAdmin(config, snapshot) {
+    if (snapshot) {
+      document.getElementById('zenith-admin-price').textContent = money(snapshot.price);
+      const isUp = snapshot.change24h > 0;
+      const isDown = snapshot.change24h < 0;
+      const changeEl = document.getElementById('zenith-admin-change');
+      changeEl.className = `delta ${isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat'}`;
+      changeEl.textContent = `${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(snapshot.change24h).toFixed(2)}% (24h)`;
+    }
+
+    if (!zenithConfigLoaded && config) {
+      document.getElementById('zenith-trend-select').value = config.trend;
+      document.getElementById('zenith-volatility-select').value = config.volatility;
+      zenithConfigLoaded = true;
+    }
+
+    if (config && config.updatedAt) {
+      document.getElementById('zenith-config-updated').textContent =
+        `Último cambio: ${fieldDate(config.updatedAt)}`;
+    }
+  }
+
+  document.getElementById('zenith-config-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submitBtn = document.getElementById('zenith-config-submit');
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = 'Guardando…';
+
+    try {
+      const trend = document.getElementById('zenith-trend-select').value;
+      const volatility = document.getElementById('zenith-volatility-select').value;
+      const result = await Api.adminUpdateZenithConfig({ trend, volatility });
+      document.getElementById('zenith-config-updated').textContent =
+        `Último cambio: ${fieldDate(result.config.updatedAt)}`;
+      showToast('Configuración de Zenith (ZNT) actualizada', 'success');
+    } catch (err) {
+      showToast(err.message || 'No se pudo actualizar la configuración de ZNT', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
+  });
+
+  // ---- Usuarios registrados ----
+
+  const RANK_LABELS = { bronce: 'Bronce', plata: 'Plata', oro: 'Oro', diamante: 'Diamante', platino: 'Platino' };
+
+  function renderUsers(users) {
+    const empty = document.getElementById('users-empty');
+    const table = document.getElementById('users-table');
+    const body = document.getElementById('users-table-body');
+    document.getElementById('users-count').textContent = String(users.length);
+
+    if (users.length === 0) {
+      empty.style.display = 'flex';
+      table.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    table.style.display = 'table';
+
+    body.innerHTML = users
+      .map((u) => {
+        const totalBalance = u.accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+        const accountsText =
+          u.accounts.length === 0
+            ? 'Sin cuentas'
+            : `${u.accounts.length} cuenta${u.accounts.length === 1 ? '' : 's'} · ${money(totalBalance)}`;
+        const rankBadge = u.rank
+          ? `<span class="badge-pill rank-${u.rank.key}">${escapeHtml(RANK_LABELS[u.rank.key] || u.rank.label)}</span>`
+          : '<span class="badge-pill">Sin insignia</span>';
+        return `
+          <tr>
+            <td>
+              <strong>${escapeHtml(u.fullName || u.username)}</strong><br />
+              <span style="color:var(--text-muted); font-size:12px;">@${escapeHtml(u.username)}</span>
+            </td>
+            <td>
+              ${escapeHtml(u.email || '—')}<br />
+              <span style="color:var(--text-muted); font-size:12px;">${escapeHtml(u.phone || '—')}</span>
+            </td>
+            <td>${rankBadge}</td>
+            <td>${accountsText}</td>
+            <td>${u.documentsCount}</td>
+            <td>${u.createdAt ? fieldDate(u.createdAt) : '—'}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  // ---- Documentos de usuarios (subidos desde "Mi perfil") ----
+
+  function renderDocuments(documents) {
+    const empty = document.getElementById('documents-empty');
+    const list = document.getElementById('documents-list');
+    document.getElementById('documents-count').textContent = String(documents.length);
+    list.innerHTML = '';
+
+    if (documents.length === 0) {
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+
+    documents.forEach((doc) => {
+      const item = document.createElement('div');
+      item.className = 'document-item';
+      item.innerHTML = `
+        <div>
+          <div class="document-item-name">📄 ${escapeHtml(doc.filename)}</div>
+          <div class="document-item-meta">
+            <strong>${escapeHtml(doc.username)}</strong> · ${fieldDate(doc.uploadedAt)} · ${(doc.size / 1024).toFixed(0)} KB
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="download-doc" data-id="${doc.id}" data-filename="${escapeHtml(doc.filename)}">Descargar</button>
+      `;
+      list.appendChild(item);
+
+      item.querySelector('[data-action="download-doc"]').addEventListener('click', async () => {
+        try {
+          await Api.adminDownloadDocument(doc.id, doc.filename);
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    });
   }
 
   function itemErrorHtml(prefix, id) {

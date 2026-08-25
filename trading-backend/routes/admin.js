@@ -24,8 +24,16 @@ const {
   rejectTrade,
   getAllDocuments,
   getDocumentById,
+  getAllUsersAdminView,
 } = require('../data/store');
 const { getFilePath } = require('../data/files');
+const {
+  getAdminConfig: getZenithConfig,
+  updateConfig: updateZenithConfig,
+  getCurrentSnapshot: getZenithSnapshot,
+  TREND_OPTIONS: ZENITH_TREND_OPTIONS,
+  VOLATILITY_OPTIONS: ZENITH_VOLATILITY_OPTIONS,
+} = require('../data/zenithCoin');
 
 const router = express.Router();
 
@@ -64,6 +72,14 @@ router.get('/pending', requireAdmin, (req, res) => {
     withdrawals: getPendingWithdrawals(),
     trades: getPendingTrades(),
   });
+});
+
+// GET /api/admin/users — todos los usuarios registrados, con su perfil
+// completo, cuentas/balances, insignia aproximada y cantidad de
+// documentos subidos. Es de solo lectura: no permite editar los datos
+// personales de nadie desde acá (a propósito, ver nota en data/store.js).
+router.get('/users', requireAdmin, (req, res) => {
+  res.json(getAllUsersAdminView());
 });
 
 // GET /api/admin/users/:userId/accounts — cuentas de un usuario, para
@@ -168,6 +184,30 @@ router.get('/documents/:id/download', requireAdmin, (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${doc.filename.replace(/"/g, '')}"`);
   fs.createReadStream(fullPath).pipe(res);
+});
+
+// ---- Moneda simulada Zenith (ZNT) ----
+//
+// Lucas no edita un precio exacto — elige una tendencia y una volatilidad,
+// y el sistema genera las velas solo (ver data/zenithCoin.js).
+
+// GET /api/admin/zenith-coin -> tendencia/volatilidad actual + snapshot de
+// precio, para que el panel muestre el estado antes de cambiar nada.
+router.get('/zenith-coin', requireAdmin, (req, res) => {
+  res.json({
+    config: getZenithConfig(),
+    snapshot: getZenithSnapshot(),
+    options: { trends: ZENITH_TREND_OPTIONS, volatilities: ZENITH_VOLATILITY_OPTIONS },
+  });
+});
+
+// PUT /api/admin/zenith-coin -> cambia tendencia y/o volatilidad para
+// adelante (no afecta las velas ya generadas).
+router.put('/zenith-coin', requireAdmin, (req, res) => {
+  const { trend, volatility } = req.body;
+  const result = updateZenithConfig({ trend, volatility });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result);
 });
 
 module.exports = router;

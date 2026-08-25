@@ -12,7 +12,9 @@ const accessRoutes = require('./routes/access');
 const adminRoutes = require('./routes/admin');
 const documentsRoutes = require('./routes/documents');
 const communityRoutes = require('./routes/community');
+const marketRoutes = require('./routes/market');
 const { requireSiteAccess } = require('./middleware/siteAccess');
+const { runDueAdminActions } = require('./data/store');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -39,6 +41,21 @@ app.use(cors()); // permite que tu frontend (en otro puerto/dominio) haga petici
 // el archivo original.
 app.use(express.json({ limit: '15mb' }));
 
+// Antes de responder CUALQUIER request, revisa si algún depósito/retiro/
+// operación que Lucas ya aprobó o rechazó desde el panel de administrador
+// ya cumplió su demora simulada de 1-2 minutos — si es así, recién ahí se
+// aplica de verdad (ver nota larga en data/store.js). Se hace acá y no con
+// un setTimeout para que sea robusto si el servidor se reinicia o se
+// duerme un rato (plan gratuito de Render).
+app.use((req, res, next) => {
+  try {
+    runDueAdminActions();
+  } catch (err) {
+    console.error('Error aplicando acciones de administrador pendientes:', err);
+  }
+  next();
+});
+
 // Ruta de salud, útil para probar que el servidor está vivo
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
@@ -63,6 +80,7 @@ app.use('/api/trading', tradingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/community', communityRoutes);
+app.use('/api/market', marketRoutes);
 
 // Manejo simple de rutas no encontradas
 app.use((req, res) => {

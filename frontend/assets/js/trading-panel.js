@@ -210,17 +210,18 @@ function initChart() {
     return;
   }
 
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   chart = LightweightCharts.createChart(container, {
     layout: {
       background: { type: 'solid', color: 'transparent' },
-      textColor: '#c3c2b7',
+      textColor: isLight ? '#4c4b47' : '#c3c2b7',
     },
     grid: {
-      vertLines: { color: 'rgba(255,255,255,0.05)' },
-      horzLines: { color: 'rgba(255,255,255,0.05)' },
+      vertLines: { color: isLight ? 'rgba(20,20,15,0.06)' : 'rgba(255,255,255,0.05)' },
+      horzLines: { color: isLight ? 'rgba(20,20,15,0.06)' : 'rgba(255,255,255,0.05)' },
     },
-    rightPriceScale: { borderColor: 'rgba(255,255,255,0.10)' },
-    timeScale: { borderColor: 'rgba(255,255,255,0.10)', timeVisible: true, secondsVisible: false },
+    rightPriceScale: { borderColor: isLight ? 'rgba(20,20,15,0.12)' : 'rgba(255,255,255,0.10)' },
+    timeScale: { borderColor: isLight ? 'rgba(20,20,15,0.12)' : 'rgba(255,255,255,0.10)', timeVisible: true, secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
   });
 

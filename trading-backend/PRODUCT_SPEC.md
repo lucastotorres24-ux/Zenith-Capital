@@ -47,7 +47,10 @@ así no hay que repetir el contexto en cada conversación.
   estas cuatro acciones se ejecuta sola — todas quedan "en revisión" hasta
   que él las aprueba (tal cual, o editando el monto/cantidad/precio final
   antes de confirmar) o las rechaza. Solo el login/registro sigue siendo
-  instantáneo.
+  instantáneo. **Desde agosto 2026, esa aprobación tiene además una demora
+  simulada de 1 a 2 minutos** antes de aplicarse de verdad — ver sección 16.
+- **Panel de usuarios registrados, moneda simulada Zenith (ZNT) y modo
+  claro/oscuro** — ver secciones 16 y 17 (agosto 2026).
   - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
     asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
     elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
@@ -498,7 +501,7 @@ Fase 0/3 para que sus estados coincidan con el resto del ledger.
 
 ## 11. Panel de administrador — cola de aprobación (construido)
 
-> Esta sección reemplaza una idea anterior ("panel de activos
+> Esta sección reemplazó una idea anterior ("panel de activos
 > personalizados/monedas propias" con precio editable a mano) que Lucas
 > pidió explícitamente descartar antes de construirse del todo: no quería
 > inventar una moneda propia, sino poder revisar y editar el monto final
@@ -506,6 +509,15 @@ Fase 0/3 para que sus estados coincidan con el resto del ledger.
 > antes de que se apliquen. Lo que sigue es lo que se construyó en su
 > lugar — ver el detalle completo en "Aprobación manual..." dentro de
 > "Estado actual", arriba.
+>
+> **Actualización agosto 2026**: Lucas volvió a pedir una moneda simulada
+> propia, esta vez con un mecanismo distinto y ya validado con él (no
+> precio editable a mano, sino tendencia/volatilidad que el sistema
+> convierte en velas solo) — ver sección 16.3. Las dos cosas conviven sin
+> contradicción: la cola de aprobación de este panel sigue controlando las
+> acciones reales de los usuarios (depósitos, retiros, compras, ventas —
+> incluidas las de ZNT, que pasan por la misma cola), y la moneda Zenith es
+> un activo aparte que se puede comprar/vender como cualquier otro.
 
 - Pantalla `admin.html`, separada del login normal de usuarios, protegida
   por el código de acceso del sitio y además por su propio código de
@@ -623,6 +635,122 @@ para la descripción orientada al usuario).
   y muestra el mensaje correspondiente.
 - No requiere ninguna variable de entorno nueva: reutiliza
   `OPENAI_API_KEY`, ya usada por el "Análisis con IA" original.
+
+## 16. Demora de aprobación, panel de usuarios y moneda Zenith (ZNT) — construido (agosto 2026)
+
+### 16.1 Demora simulada de 1 a 2 minutos en la aprobación
+
+- A pedido de Lucas, aprobar/rechazar un depósito, retiro o compra/venta ya
+  no aplica el cambio al instante: queda agendado (`pendingAction` /
+  `pendingPayload` / `applyAt` en `data/store.js`) y se aplica de verdad
+  entre 1 y 2 minutos después (tiempo aleatorio dentro de ese rango), sin
+  que el estado visible cambie mientras tanto (el usuario sigue viendo
+  "en proceso"/"pendiente" hasta que se aplica de verdad).
+- Es **una sola cola de aprobación para todos** — Lucas la usa igual desde
+  cualquier máquina donde entre como administrador; no hay un modo
+  "prueba" separado del modo real.
+- Generación perezosa por request, no por temporizador: cada request al
+  backend (cualquiera — hay un middleware global en `server.js`) revisa si
+  alguna acción ya decidida cumplió su plazo y, si es así, recién ahí mueve
+  el balance/posición de verdad (`runDueAdminActions` en `data/store.js`).
+  Igual que el resto de la generación perezosa del proyecto (comunidad,
+  ZNT), esto es robusto a que el servidor gratuito de Render se reinicie o
+  se duerma por inactividad — no depende de que un proceso siga vivo sin
+  interrupción.
+- Los campos internos de la decisión (`pendingAction`, `pendingPayload`,
+  `applyAt`, `adminDecidedAt`) nunca se exponen en los endpoints que ve el
+  usuario (`stripPendingInternals` en `data/store.js`) — solo se ve el
+  estado final una vez aplicado.
+- El dashboard vuelve a consultar cuentas, depósitos, retiros, posiciones y
+  operaciones cada 20 segundos (`OPERATIONAL_REFRESH_MS` en
+  `dashboard.js`) para que el cambio aparezca solo, sin recargar la página.
+
+### 16.2 Panel de usuarios registrados (admin)
+
+- Nueva sección "Usuarios registrados" en `admin.html`, antes de las colas
+  de aprobación: una fila por usuario con su perfil (usuario/contacto),
+  insignia actual, resumen de cuentas (cantidad + balance total),
+  cantidad de documentos subidos, y fecha de registro.
+- Alcance confirmado con Lucas: **"ver todo, editar lo operativo"** — esta
+  tabla es de solo lectura (perfil, insignia, documentos); para editar
+  montos/cantidades se sigue usando la cola de aprobación de abajo, no esta
+  tabla. No hay edición de datos personales del usuario desde acá.
+- `GET /api/admin/users` (`getAllUsersAdminView` en `data/store.js`) arma
+  la vista combinando usuarios + cuentas + documentos + insignia calculada.
+
+### 16.3 Moneda simulada Zenith (ZNT)
+
+- Motor propio en `data/zenithCoin.js`: no sigue el precio de ninguna
+  moneda real — es una caminata aleatoria (distribución ~normal, no
+  uniforme) con dos perillas que Lucas controla desde el panel de
+  administrador (sección "Moneda Zenith" en `admin.html`, encima de las
+  colas de aprobación):
+  - **Tendencia**: subida / bajada / estable (hacia dónde se inclina el
+    precio con el tiempo).
+  - **Volatilidad**: baja / media / alta (qué tan bruscos son los
+    movimientos vela a vela).
+  - Los cambios rigen **desde ese momento en adelante** — no reescriben
+    velas ya generadas.
+- Precio inicial y "circulating supply" en un rango parecido al de una
+  cripto real de baja capitalización (sin copiar ninguna en particular),
+  para que se sienta como un activo real y no como un número inventado.
+- Velas de 15 minutos, generación perezosa igual que la Comunidad Zenith
+  (nada corre en segundo plano; cada consulta pone al día las velas que
+  "deberían" haberse generado según el tiempo transcurrido) — arranque en
+  frío simulando 48h de operación para que el gráfico no se vea vacío la
+  primera vez.
+- Datos que se muestran, igual que cualquier cripto real: precio, cambio
+  24h, máximo/mínimo 24h, volumen 24h, capitalización de mercado.
+- `GET /api/market/zenith` (snapshot) y `GET /api/market/zenith/candles`
+  (velas, formato compatible con `lightweight-charts`) — ambos requieren
+  sesión. `GET /api/admin/zenith-coin` / `PUT /api/admin/zenith-coin` para
+  leer/cambiar la configuración (solo admin).
+- **Integración en el frontend** (`dashboard.js`): tarjeta dedicada "Zenith
+  ZNT" debajo del ticker de cripto (con borde dorado, distinta del resto
+  del mercado para que se note que es un activo propio de la plataforma),
+  con precio en vivo, variación 24h, máximo/mínimo/volumen/cap. de mercado,
+  y botones Comprar/Vender/Ver gráfico. El botón "Ver gráfico" abre un
+  modal con velas (`lightweight-charts`, mismo patrón que el panel de
+  trading Sube/Baja).
+  - ZNT reutiliza el modal genérico de comprar/vender y todo el resto de la
+    plataforma (posiciones abiertas, historial, insignias) sin código
+    aparte: solo hace falta que `CRYPTO_META` conozca su símbolo/nombre —
+    el resto de las funciones (`openTradeModal`, `renderHoldings`, etc.) ya
+    funcionan con cualquier activo con precio.
+  - **Fuera de alcance por ahora**: no se integró en el panel de trading
+    Sube/Baja (`trading-panel.js`) — ese archivo depende directo del
+    formato de precios masivos de CoinGecko y necesitaría un caso aparte;
+    queda pendiente si Lucas lo pide más adelante.
+
+## 17. Modo claro/oscuro, logo y otros ajustes visuales — construido (agosto 2026)
+
+- **Modo claro/oscuro**: switch en el menú de usuario del dashboard (junto
+  a "Mi perfil" y "Cerrar sesión", como pidió Lucas), con paleta clara
+  completa definida en `styles.css` (`:root[data-theme="light"]`) sobre el
+  mismo sistema de variables que ya usaba todo el sitio — no se tocó cada
+  regla una por una. El tema elegido se guarda en `localStorage` y se
+  aplica en **todas** las páginas (index, dashboard, admin, comunidad,
+  panel de trading) con un script chiquito al inicio de cada `<head>`, para
+  que no haya parpadeo del tema anterior al cargar. Los gráficos de velas
+  (ZNT y Sube/Baja) también ajustan sus colores según el tema activo.
+- **Logo sin borde dorado**: el aro dorado alrededor del ícono se recoloreó
+  a un gris metálico (a juego con la "Z" plateada del mismo logo) en
+  `assets/img/logo.png` — es un solo archivo usado en todas las páginas, así
+  que el cambio aplica en todo el sitio de una vez. El resto del ícono (la
+  "Z" y la flecha dorada) no se tocó.
+- **Comunidad Zenith más activa**: el promedio de tiempo entre mensajes
+  nuevos bajó de 35s a 12s (`AVG_INTERVAL_SECONDS` en `data/community.js`)
+  — el frontend ya consultaba cada 8s, así que ahora casi siempre hay algo
+  nuevo cuando se revisa.
+- **Depósitos y retiros con tono más profesional**: los modales de
+  depositar/retirar ahora abren con una nota breve de confianza (revisión
+  manual, plazo de 1-2 minutos hábiles, monedas/bancos aceptados) antes del
+  formulario, para que se sientan como los de una empresa real y no solo
+  un formulario suelto.
+- No se rehízo la organización general de las páginas (secciones, orden,
+  navegación) — Lucas pidió explícitamente mantener el contexto de lo ya
+  construido; los ajustes de esta sección son sobre estética y tono, no
+  sobre la estructura.
 
 ## Restricciones de seguridad (no negociables)
 

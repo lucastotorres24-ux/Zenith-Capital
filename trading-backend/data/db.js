@@ -27,6 +27,9 @@ function seedData() {
     nextCommunityMessageId: 1,
     communityLastGeneratedAt: now,
     communityMessages: [],
+    zenithCandles: [],
+    zenithConfig: { trend: 'estable', volatility: 'media', updatedAt: now },
+    zenithLastGeneratedAt: now,
     users: [
       {
         id: 1,
@@ -38,6 +41,7 @@ function seedData() {
         birthDate: null,
         address: null,
         termsAcceptedAt: now,
+        createdAt: now,
       },
     ],
     deposits: [],
@@ -195,6 +199,13 @@ function load() {
       u.termsAcceptedAt = null;
       migrated = true;
     }
+    // Fecha de registro, para el panel de "Usuarios registrados" del
+    // administrador — las cuentas de antes de esto no la tienen, se
+    // aproxima con termsAcceptedAt (si existe) o con ahora mismo.
+    if (u.createdAt === undefined) {
+      u.createdAt = u.termsAcceptedAt || new Date().toISOString();
+      migrated = true;
+    }
   });
 
   if (!Array.isArray(data.documents)) {
@@ -215,6 +226,23 @@ function load() {
   }
   if (typeof data.nextCommunityMessageId !== 'number') {
     data.nextCommunityMessageId = 1;
+    migrated = true;
+  }
+
+  // Moneda simulada Zenith (ZNT) — ver data/zenithCoin.js. Igual que con
+  // communityMessages, el "arranque en frío" (generar de golpe un
+  // historial de velas para que no se vea vacío) lo decide esa misma
+  // función mirando si zenithCandles está vacío, no esta migración.
+  if (!Array.isArray(data.zenithCandles)) {
+    data.zenithCandles = [];
+    migrated = true;
+  }
+  if (!data.zenithConfig) {
+    data.zenithConfig = { trend: 'estable', volatility: 'media', updatedAt: new Date().toISOString() };
+    migrated = true;
+  }
+  if (typeof data.zenithLastGeneratedAt !== 'string') {
+    data.zenithLastGeneratedAt = new Date().toISOString();
     migrated = true;
   }
 

@@ -7,6 +7,16 @@
 <title>Zenith Capital — Panel de administrador</title>
 <link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
+<script>
+  // Aplica el tema guardado ANTES de pintar la página, para que no haya un
+  // parpadeo del tema anterior al cargar (oscuro es el valor por defecto).
+  (function () {
+    try {
+      var saved = localStorage.getItem('zenith_theme');
+      if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 
@@ -77,6 +87,77 @@
   <section class="section" style="margin-bottom: 24px;">
     <div class="section-header">
       <div>
+        <h2>Usuarios registrados</h2>
+        <div class="subtitle">Cada persona que abre una cuenta aparece acá, con su perfil, cuentas e insignia — de solo lectura (para editar montos, usa las colas de abajo).</div>
+      </div>
+      <span class="badge" id="users-count">0</span>
+    </div>
+    <div class="section-body">
+      <div class="empty-state" id="users-empty">
+        <div class="icon">👥</div>
+        <div>Todavía no hay ningún usuario registrado.</div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="ticker-table" id="users-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Contacto</th>
+              <th>Insignia</th>
+              <th>Cuentas</th>
+              <th>Documentos</th>
+              <th>Registrado</th>
+            </tr>
+          </thead>
+          <tbody id="users-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section zenith-coin-section" style="margin-bottom: 24px;">
+    <div class="section-header">
+      <div>
+        <h2>Moneda Zenith <span class="zenith-ticker-pill">ZNT</span></h2>
+        <div class="subtitle">Controla hacia dónde se inclina el precio y qué tan bruscos son los movimientos. Los cambios rigen desde ahora en adelante — no afectan las velas ya generadas.</div>
+      </div>
+      <span class="badge" id="zenith-admin-status">cargando…</span>
+    </div>
+    <div class="section-body">
+      <div class="zenith-price-row">
+        <div class="zenith-price-main">
+          <div class="zenith-price-value" id="zenith-admin-price">—</div>
+          <span class="delta" id="zenith-admin-change">—</span>
+        </div>
+      </div>
+      <form id="zenith-config-form" class="zenith-config-row">
+        <div class="field">
+          <label for="zenith-trend-select">Tendencia</label>
+          <select id="zenith-trend-select">
+            <option value="subida">Subida</option>
+            <option value="bajada">Bajada</option>
+            <option value="estable">Estable</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="zenith-volatility-select">Volatilidad</label>
+          <select id="zenith-volatility-select">
+            <option value="baja">Baja</option>
+            <option value="media">Media</option>
+            <option value="alta">Alta</option>
+          </select>
+        </div>
+        <div class="field" style="align-self: end;">
+          <button type="submit" class="btn btn-primary" id="zenith-config-submit">Guardar cambios</button>
+        </div>
+      </form>
+      <div class="subtitle" id="zenith-config-updated" style="margin-top: 8px;"></div>
+    </div>
+  </section>
+
+  <section class="section" style="margin-bottom: 24px;">
+    <div class="section-header">
+      <div>
         <h2>Depósitos pendientes</h2>
         <div class="subtitle">Elige a qué cuenta del usuario va y el monto final antes de aprobar.</div>
       </div>
@@ -122,6 +203,23 @@
         <div>No hay compras/ventas pendientes por el momento.</div>
       </div>
       <div id="pending-trades-list" class="pending-list"></div>
+    </div>
+  </section>
+
+  <section class="section" style="margin-top: 24px;">
+    <div class="section-header">
+      <div>
+        <h2>Documentos de usuarios</h2>
+        <div class="subtitle">PDFs que los usuarios adjuntaron desde "Mi perfil" — de cualquier usuario, subidos desde cualquier computador o celular.</div>
+      </div>
+      <span class="badge" id="documents-count">0</span>
+    </div>
+    <div class="section-body">
+      <div class="empty-state" id="documents-empty">
+        <div class="icon">📄</div>
+        <div>Todavía no hay ningún documento subido.</div>
+      </div>
+      <div id="documents-list" class="document-list"></div>
     </div>
   </section>
 
