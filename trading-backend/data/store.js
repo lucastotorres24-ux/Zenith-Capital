@@ -611,6 +611,19 @@ function requestAccountEdit({ id, fields }) {
       return { error: 'El equity debe ser un número mayor o igual a 0' };
     }
     nextFields.equity = Number(fields.equity.toFixed(2));
+  } else if (nextFields.balance !== undefined) {
+    // A pedido de Lucas: si edita el balance y NO dice explícitamente un
+    // equity distinto, el equity se mueve junto con el balance (queda
+    // igual al balance nuevo, o sea sin ganancia/pérdida flotante). Esto
+    // evita que quede un equity "viejo" desactualizado — el dashboard del
+    // cliente calcula el P/L flotante y el "Equity total" directamente de
+    // este campo (ver dashboard.js), así que sin este ajuste, esos números
+    // se verían inconsistentes después de un cambio de balance manual.
+    // Si Lucas SÍ quiere simular una ganancia/pérdida flotante distinta,
+    // solo tiene que escribir un valor de Equity distinto en el mismo
+    // formulario — eso sigue funcionando igual (entra por la rama de
+    // arriba y respeta el valor que él elija).
+    nextFields.equity = nextFields.balance;
   }
   if (fields.leverage !== undefined) {
     if (!fields.leverage || typeof fields.leverage !== 'string') {

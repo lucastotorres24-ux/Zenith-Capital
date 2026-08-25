@@ -419,6 +419,7 @@
                       <input type="text" data-role="leverage" data-account-id="${a.id}" placeholder="${escapeHtml(a.leverage || '1:100')}" />
                     </div>
                   </div>
+                  <div class="admin-edit-hint">💡 Si solo escribes el Balance, el Equity se ajusta solo al mismo valor (sin ganancia/pérdida flotante). Si quieres dejar un Equity distinto, escríbelo tú mismo en su campo.</div>
                   <div class="pending-item-actions">
                     <button class="btn btn-primary btn-sm" data-action="save-account" data-account-id="${a.id}">Guardar cambios</button>
                   </div>
@@ -595,6 +596,24 @@
     });
     document.querySelectorAll('[data-action="create-holding"]').forEach((btn) => {
       btn.addEventListener('click', () => createHolding(Number(btn.dataset.userId)));
+    });
+
+    // Equity "sigue" al Balance mientras el admin no haya tocado el campo
+    // de Equity a mano — mismo criterio que aplica el backend al guardar
+    // (ver requestAccountEdit en data/store.js), pero mostrado en vivo acá
+    // para que Lucas vea el número actualizarse mientras escribe, en vez
+    // de enterarse recién después de guardar.
+    document.querySelectorAll('[data-role="balance"][data-account-id]').forEach((balanceInput) => {
+      const accountId = balanceInput.dataset.accountId;
+      const equityInput = document.querySelector(`[data-role="equity"][data-account-id="${accountId}"]`);
+      if (!equityInput) return;
+      balanceInput.addEventListener('input', () => {
+        if (equityInput.dataset.touched === '1') return;
+        equityInput.value = balanceInput.value;
+      });
+      equityInput.addEventListener('input', () => {
+        equityInput.dataset.touched = '1';
+      });
     });
   }
 

@@ -58,6 +58,10 @@ así no hay que repetir el contexto en cada conversación.
   footer corporativo, buzón de soporte con NIT, y edición directa de
   usuarios desde el panel de administrador** — ver sección 18 (agosto
   2026) para el detalle completo de esta tanda.
+- **Footer con texto profesional y columna de Seguridad, sincronización
+  automática balance→equity al editar cuentas desde el panel de
+  administrador, y el logo funcionando como botón de "volver al inicio"
+  en todas las páginas** — ver sección 19 (agosto 2026).
   - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
     asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
     elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
@@ -973,6 +977,63 @@ cambio** (no solo el símbolo).
   `DELETE /api/admin/holdings/:id`. `GET /api/admin/users` ahora también
   incluye `equity`/`leverage` por cuenta y la lista de posiciones de cada
   usuario (antes solo traía `balance`), necesario para poder editarlos.
+
+## 19. Footer profesional con sección de seguridad, sincronización balance→equity y navegación con el logo desde cualquier panel (agosto 2026)
+
+- **Footer institucional**: en `dashboard.html`, `trading-panel.html`,
+  `community.html`, `insignias.html` y `support.html` (las 5 páginas que
+  comparten el mismo footer) se reescribió el texto de la marca y la línea
+  legal inferior para sonar como una plataforma financiera profesional en
+  vez de repetir literalmente "plataforma de práctica" — sin dejar de
+  aclarar en ningún momento que **es un simulador y ninguna cifra es
+  dinero real** (ese punto es no negociable, ver "Restricciones de
+  seguridad" más abajo). Se agregó una sexta columna "Seguridad" con
+  contenido real (no inventado): aviso de conexión cifrada, aviso de que
+  todo depósito/retiro/operación pasa por revisión manual antes de
+  aplicarse, aviso de que el panel de administrador tiene acceso
+  independiente y protegido, y un enlace real a la página de la SEC sobre
+  cómo protegerse de fraudes de inversión
+  (`investor.gov/protect-your-investments`). El grid del footer pasó de 4
+  a 5 columnas de contenido (`--site-footer-grid` en `styles.css`) para
+  darle espacio a la columna nueva. No se tocó el modal de Términos y
+  Condiciones de `index.html` (sigue siendo la divulgación legal completa)
+  ni el aviso de "clientes simulados" de `community.html`.
+- **Sincronización balance → equity al editar desde el panel de admin**:
+  antes, si Lucas editaba solo el Balance de una cuenta desde "Editar" en
+  el panel de administrador, el Equity se quedaba con su valor viejo — y
+  como el dashboard del cliente calcula el "Equity total" y el P/L
+  flotante directamente del campo `equity` guardado (no lo recalcula desde
+  las posiciones), esto hacía que el balance y el equity mostraran cifras
+  inconsistentes hasta que alguien editara el equity aparte. Ahora, en
+  `requestAccountEdit` (`data/store.js`): si Lucas edita el Balance y NO
+  escribe explícitamente un Equity distinto en el mismo formulario, el
+  Equity se ajusta automáticamente al mismo valor del Balance nuevo (sin
+  ganancia/pérdida flotante). Si Lucas sí quiere dejar una ganancia/pérdida
+  flotante simulada, simplemente escribe un Equity distinto en su propio
+  campo — eso se respeta tal cual. El cambio sigue el mismo mecanismo de
+  demora de 1-2 minutos de siempre (`pendingAdminEdit` / `applyAt`); el
+  cliente ve el balance y el equity nuevos al mismo tiempo, ya
+  consistentes, cuando se aplica el cambio.
+  - En el formulario de edición del panel de administrador
+    (`assets/js/admin.js`) se agregó el mismo comportamiento en vivo del
+    lado del navegador: mientras Lucas escribe en el campo Balance, el
+    campo Equity se actualiza solo con el mismo valor — hasta que Lucas
+    toca el campo Equity directamente (lo escribe él mismo), momento en el
+    que deja de seguir al Balance para esa edición. Un texto de ayuda bajo
+    los campos explica esto ("💡 Si solo escribes el Balance, el Equity se
+    ajusta solo al mismo valor...").
+  - El cálculo de insignia/rango (Diamante/Platino, ver sección 17) ya se
+    recalculaba en vivo desde el balance actual de las cuentas en cada
+    carga — no necesitó ningún cambio, sigue actualizándose solo.
+- **Volver tocando el logo desde cualquier panel**: el logo "Zenith
+  Capital" de la barra superior (`.brand`) de `dashboard.html` y
+  `admin.html` ahora es un enlace real (antes era un simple `<div>`
+  decorativo) — en `dashboard.html` vuelve a `dashboard.html` y en
+  `admin.html` vuelve a `admin.html`. Las demás páginas
+  (`trading-panel.html`, `community.html`, `insignias.html`,
+  `support.html`) ya tenían el logo como enlace de vuelta al dashboard
+  desde la tanda anterior (sección 18), así que con esto el logo funciona
+  como botón de "inicio" en absolutamente todas las páginas del sitio.
 
 ## Restricciones de seguridad (no negociables)
 
