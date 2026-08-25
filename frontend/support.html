@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Zenith Capital — Comunidad</title>
+<title>Zenith Capital — Soporte</title>
 <link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
 <script>
@@ -61,46 +61,50 @@
 
   <div class="page-header">
     <div>
-      <h1>Comunidad Zenith</h1>
-      <p class="subtitle">Clientes certificados Zenith de todos los rangos, conversando sobre el mercado y la plataforma.</p>
+      <h1>Buzón de quejas y peticiones</h1>
+      <p class="subtitle">Cuéntanos qué necesitas — te damos un número de referencia (NIT) y verás la respuesta aquí mismo, dentro de la plataforma.</p>
     </div>
   </div>
 
-  <section class="section community-layout">
-    <div class="community-members">
-      <h3 class="community-members-title">Clientes certificados</h3>
-      <div id="community-members-list" class="community-members-list">
-        <!-- se llena por JS -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Nueva petición</h2>
+        <div class="subtitle">No enviamos correos reales — la respuesta de nuestro equipo aparece en tu historial de abajo.</div>
       </div>
     </div>
-
-    <div class="community-chat">
-      <div class="community-chat-feed" id="community-feed">
-        <!-- se llena por JS -->
-      </div>
-      <form class="community-composer" id="community-composer">
-        <input
-          id="community-composer-input"
-          type="text"
-          maxlength="500"
-          placeholder="Escribe algo para la comunidad…"
-          autocomplete="off"
-          required
-        />
-        <button type="submit" class="btn btn-primary" id="community-composer-submit">Enviar</button>
+    <div class="section-body">
+      <form id="support-form">
+        <div class="field">
+          <label for="support-text">¿En qué te podemos ayudar?</label>
+          <textarea id="support-text" rows="4" maxlength="1000" placeholder="Escribe tu queja, duda o petición…" required></textarea>
+        </div>
+        <div class="form-error" id="support-form-error">
+          <span>⚠</span>
+          <span id="support-form-error-text"></span>
+        </div>
+        <button type="submit" class="btn btn-primary" id="support-form-submit">Enviar</button>
       </form>
-      <div class="form-error" id="community-composer-error">
-        <span>⚠</span>
-        <span id="community-composer-error-text"></span>
-      </div>
     </div>
   </section>
 
-  <p class="community-disclaimer">
-    💡 Los demás clientes de esta comunidad son simulados — sus mensajes se generan automáticamente para
-    ambientar la plataforma de práctica y no provienen de personas reales. Tus mensajes sí son reales y
-    recibirás una respuesta de la comunidad poco después de enviarlos.
-  </p>
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Tu historial</h2>
+        <div class="subtitle">Cada petición queda con su propio número NIT para que la puedas seguir.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="support-ticket-list" id="support-ticket-list">
+        <!-- se llena por JS -->
+      </div>
+      <div class="empty-state" id="support-ticket-empty" style="display:none;">
+        <div class="icon">📮</div>
+        <div>Todavía no has enviado ninguna petición.</div>
+      </div>
+    </div>
+  </section>
 
 </main>
 
@@ -155,9 +159,11 @@
   </div>
 </footer>
 
+<div class="toast-stack" id="toast-stack"></div>
+
 <script src="assets/js/config.js"></script>
 <script src="assets/js/site-gate.js"></script>
 <script src="assets/js/api.js"></script>
-<script src="assets/js/community.js"></script>
+<script src="assets/js/support.js"></script>
 </body>
 </html>

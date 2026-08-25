@@ -42,10 +42,10 @@
 </div>
 
 <header class="topbar">
-  <div class="brand">
+  <a class="brand" href="dashboard.html" title="Volver al dashboard">
     <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
     <span>Zenith Capital</span>
-  </div>
+  </a>
   <div class="topbar-right">
     <div class="user-chip">
       <span class="user-avatar" id="user-initial">U</span>
@@ -54,7 +54,7 @@
         <span class="investor-badge">★ Zenith Investor</span>
       </div>
     </div>
-    <a class="btn btn-ghost btn-sm" href="dashboard.html">← Volver al dashboard</a>
+    <a class="back-arrow-btn" href="dashboard.html" title="Volver al dashboard" aria-label="Volver al dashboard">←</a>
     <button class="btn btn-ghost btn-sm" id="logout-btn">Cerrar sesión</button>
   </div>
 </header>
@@ -182,6 +182,57 @@
   </section>
 
 </main>
+
+<footer class="site-footer">
+  <div class="site-footer-grid">
+    <div class="site-footer-col">
+      <div class="site-footer-brand">
+        <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+        <span>Zenith Capital</span>
+      </div>
+      <p>Plataforma de práctica para aprender trading e inversión — ningún saldo, precio ni operación de este sitio es dinero real.</p>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Tecnología</h4>
+      <ul>
+        <li><a href="https://www.investopedia.com/terms/b/blockchain.asp" target="_blank" rel="noopener">Qué es blockchain</a></li>
+        <li><a href="https://ethereum.org/es/what-is-ethereum/" target="_blank" rel="noopener">Qué es Ethereum</a></li>
+      </ul>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Mercado y noticias</h4>
+      <ul>
+        <li><a href="https://www.coindesk.com" target="_blank" rel="noopener">CoinDesk</a></li>
+        <li><a href="https://www.reuters.com/markets/" target="_blank" rel="noopener">Reuters Markets</a></li>
+        <li><a href="https://www.bloomberg.com/markets" target="_blank" rel="noopener">Bloomberg Markets</a></li>
+        <li><a href="https://www.investor.gov" target="_blank" rel="noopener">Investor.gov (SEC)</a></li>
+      </ul>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Producto</h4>
+      <ul>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="trading-panel.html">Panel de Trading</a></li>
+        <li><a href="community.html">Comunidad Zenith</a></li>
+        <li><a href="insignias.html">Insignias Zenith</a></li>
+      </ul>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Contacto</h4>
+      <ul>
+        <li><a href="support.html">Buzón de quejas y peticiones</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="site-footer-bottom">
+    Zenith Capital es una plataforma de práctica con fines educativos. Ningún contenido de este sitio constituye asesoría financiera real ni mueve dinero real.
+  </div>
+</footer>
 
 <div class="toast-stack" id="toast-stack"></div>
 

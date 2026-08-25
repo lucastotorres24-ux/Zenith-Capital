@@ -210,6 +210,78 @@
       document.getElementById('zenith-admin-status').textContent = 'sin conexión';
       document.getElementById('zenith-admin-status').style.color = 'var(--critical)';
     }
+    try {
+      const tickets = await Api.adminGetSupportTickets();
+      renderSupportTickets(tickets);
+    } catch (err) {
+      // Igual que documentos/usuarios: se reintenta solo en el próximo ciclo.
+    }
+  }
+
+  // ---- Buzón de soporte ----
+
+  function renderSupportTickets(tickets) {
+    const list = document.getElementById('support-list');
+    const empty = document.getElementById('support-empty');
+    const openCount = tickets.filter((t) => t.status !== 'respondido').length;
+    document.getElementById('support-open-count').textContent = String(openCount);
+
+    if (tickets.length === 0) {
+      empty.style.display = 'flex';
+      list.innerHTML = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    list.innerHTML = tickets
+      .map((t) => {
+        const isOpen = t.status !== 'respondido';
+        return `
+          <div class="pending-item" data-ticket-id="${t.id}">
+            <div class="pending-item-top">
+              <span class="pending-item-user">${escapeHtml(t.username)} · NIT #${escapeHtml(t.nit)}</span>
+              <span>${fieldDate(t.createdAt)}</span>
+            </div>
+            <div class="pending-item-meta">${escapeHtml(t.text)}</div>
+            ${
+              isOpen
+                ? `
+                  <div class="pending-item-fields">
+                    <div class="field pending-item-field" style="min-width:260px; flex:1;">
+                      <label>Tu respuesta</label>
+                      <textarea rows="2" data-role="reply" placeholder="Escribe tu respuesta…"></textarea>
+                    </div>
+                  </div>
+                  <div class="pending-item-actions">
+                    <button class="btn btn-primary btn-sm" data-action="reply">Responder</button>
+                  </div>
+                `
+                : `<div class="pending-item-meta"><strong>Tu respuesta:</strong> ${escapeHtml(t.reply)}</div>`
+            }
+            ${itemErrorHtml('support', t.id)}
+          </div>
+        `;
+      })
+      .join('');
+
+    list.querySelectorAll('[data-action="reply"]').forEach((btn) => {
+      const item = btn.closest('.pending-item');
+      const id = Number(item.dataset.ticketId);
+      btn.addEventListener('click', () => replyToSupportTicket(id, item));
+    });
+  }
+
+  async function replyToSupportTicket(id, item) {
+    const reply = item.querySelector('[data-role="reply"]').value.trim();
+    if (!reply) return showItemError('support', id, 'Escribe una respuesta antes de enviarla.');
+
+    try {
+      await Api.adminReplySupportTicket(id, reply);
+      showToast('Respuesta enviada', 'success');
+      loadPending();
+    } catch (err) {
+      showItemError('support', id, err.message);
+    }
   }
 
   // ---- Moneda Zenith (ZNT) ----
@@ -264,11 +336,193 @@
     }
   });
 
-  // ---- Usuarios registrados ----
+  // ---- Usuarios registrados (+ edición directa) ----
 
   const RANK_LABELS = { bronce: 'Bronce', plata: 'Plata', oro: 'Oro', diamante: 'Diamante', platino: 'Platino' };
 
+  // Mismo catálogo de activos que el panel de trading del cliente
+  // (trading-panel.js PANEL_META), para que una posición creada desde acá
+  // se vea y opere exactamente igual que una que el usuario abrió solo.
+  const ADMIN_ASSET_OPTIONS = [
+    { asset: 'zenith', symbol: 'ZNT', name: 'Zenith (moneda propia)' },
+    { asset: 'bitcoin', symbol: 'BTC', name: 'Bitcoin' },
+    { asset: 'ethereum', symbol: 'ETH', name: 'Ethereum' },
+    { asset: 'binancecoin', symbol: 'BNB', name: 'BNB' },
+    { asset: 'solana', symbol: 'SOL', name: 'Solana' },
+    { asset: 'ripple', symbol: 'XRP', name: 'XRP' },
+    { asset: 'cardano', symbol: 'ADA', name: 'Cardano' },
+    { asset: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin' },
+    { asset: 'polkadot', symbol: 'DOT', name: 'Polkadot' },
+    { asset: 'chainlink', symbol: 'LINK', name: 'Chainlink' },
+    { asset: 'avalanche-2', symbol: 'AVAX', name: 'Avalanche' },
+    { asset: 'litecoin', symbol: 'LTC', name: 'Litecoin' },
+    { asset: 'tron', symbol: 'TRX', name: 'TRON' },
+    { asset: 'bitcoin-cash', symbol: 'BCH', name: 'Bitcoin Cash' },
+    { asset: 'pax-gold', symbol: 'PAXG', name: 'Oro (PAX Gold)' },
+  ];
+
+  function assetLabel(asset, symbol) {
+    const meta = ADMIN_ASSET_OPTIONS.find((a) => a.asset === asset);
+    return meta ? `${meta.name} (${meta.symbol})` : `${symbol || asset}`;
+  }
+
+  // Qué usuarios tienen su panel de edición abierto — se conserva entre
+  // refrescos automáticos (cada 15s) para que no se cierre solo mientras
+  // Lucas está escribiendo un cambio.
+  const expandedUserIds = new Set();
+  let usersCache = [];
+
+  function pendingEditNote(pendingAdminEdit, describeFn) {
+    if (!pendingAdminEdit) return '';
+    const when = fieldDate(pendingAdminEdit.applyAt);
+    if (pendingAdminEdit.type === 'delete') {
+      return `<div class="pending-admin-edit-note">⏳ Se eliminará · aplica ~${when}</div>`;
+    }
+    if (pendingAdminEdit.type === 'create') {
+      return `<div class="pending-admin-edit-note">⏳ Posición nueva pendiente: ${describeFn(pendingAdminEdit.fields)} · aplica ~${when}</div>`;
+    }
+    return `<div class="pending-admin-edit-note">⏳ Cambio pendiente: ${describeFn(pendingAdminEdit.fields)} · aplica ~${when}</div>`;
+  }
+
+  function renderUserEditPanel(u) {
+    const accountsHtml = u.accounts.length
+      ? u.accounts
+          .map((a) => {
+            const pending = a.pendingAdminEdit;
+            const describe = (fields) =>
+              Object.entries(fields)
+                .map(([k, v]) => {
+                  if (k === 'balance') return `balance → ${money(v)}`;
+                  if (k === 'equity') return `equity → ${money(v)}`;
+                  if (k === 'leverage') return `apalancamiento → ${escapeHtml(v)}`;
+                  return `${k} → ${v}`;
+                })
+                .join(', ');
+            return `
+              <div class="pending-item admin-edit-card">
+                <div class="pending-item-top">
+                  <span class="pending-item-user">${escapeHtml(a.accountNumber)} · ${escapeHtml(a.accountType)} (${escapeHtml(a.currency)})</span>
+                  <span>Balance actual: ${money(a.balance)} · Equity: ${money(a.equity)} · Apalancamiento: ${escapeHtml(a.leverage || '—')}</span>
+                </div>
+                ${pending ? pendingEditNote(pending, describe) : `
+                  <div class="pending-item-fields">
+                    <div class="field pending-item-field" style="min-width:110px;">
+                      <label>Balance (USD)</label>
+                      <input type="number" step="0.01" min="0" data-role="balance" data-account-id="${a.id}" placeholder="${a.balance}" />
+                    </div>
+                    <div class="field pending-item-field" style="min-width:110px;">
+                      <label>Equity (USD)</label>
+                      <input type="number" step="0.01" min="0" data-role="equity" data-account-id="${a.id}" placeholder="${a.equity}" />
+                    </div>
+                    <div class="field pending-item-field" style="min-width:90px;">
+                      <label>Apalancamiento</label>
+                      <input type="text" data-role="leverage" data-account-id="${a.id}" placeholder="${escapeHtml(a.leverage || '1:100')}" />
+                    </div>
+                  </div>
+                  <div class="pending-item-actions">
+                    <button class="btn btn-primary btn-sm" data-action="save-account" data-account-id="${a.id}">Guardar cambios</button>
+                  </div>
+                  ${itemErrorHtml('account', a.id)}
+                `}
+              </div>
+            `;
+          })
+          .join('')
+      : '<div class="subtitle">Este usuario todavía no tiene cuentas.</div>';
+
+    const holdingsHtml = u.holdings.length
+      ? u.holdings
+          .map((h) => {
+            const pending = h.pendingAdminEdit;
+            const label = assetLabel(h.asset, h.symbol);
+            const describe = (fields) =>
+              Object.entries(fields)
+                .map(([k, v]) => (k === 'quantity' ? `cantidad → ${v}` : `precio prom. → ${money(v)}`))
+                .join(', ');
+            if (pending && pending.type === 'create') {
+              return `<div class="pending-item admin-edit-card"><div class="pending-item-top"><span class="pending-item-user">${escapeHtml(label)}</span></div>${pendingEditNote(pending, describe)}</div>`;
+            }
+            return `
+              <div class="pending-item admin-edit-card">
+                <div class="pending-item-top">
+                  <span class="pending-item-user">${escapeHtml(label)}</span>
+                  <span>Cantidad: ${h.quantity} · Precio prom.: ${money(h.avgPrice)}</span>
+                </div>
+                ${pending ? pendingEditNote(pending, describe) : `
+                  <div class="pending-item-fields">
+                    <div class="field pending-item-field" style="min-width:110px;">
+                      <label>Cantidad</label>
+                      <input type="number" step="any" min="0.00000001" data-role="quantity" data-holding-id="${h.id}" placeholder="${h.quantity}" />
+                    </div>
+                    <div class="field pending-item-field" style="min-width:110px;">
+                      <label>Precio prom. (USD)</label>
+                      <input type="number" step="any" min="0.00000001" data-role="avgPrice" data-holding-id="${h.id}" placeholder="${h.avgPrice}" />
+                    </div>
+                  </div>
+                  <div class="pending-item-actions">
+                    <button class="btn btn-primary btn-sm" data-action="save-holding" data-holding-id="${h.id}">Guardar cambios</button>
+                    <button class="btn btn-danger btn-sm" data-action="delete-holding" data-holding-id="${h.id}">Eliminar</button>
+                  </div>
+                  ${itemErrorHtml('holding', h.id)}
+                `}
+              </div>
+            `;
+          })
+          .join('')
+      : '<div class="subtitle">Este usuario todavía no tiene posiciones abiertas.</div>';
+
+    const accountOptionsForNew = u.accounts.length
+      ? u.accounts.map((a) => `<option value="${a.id}">${escapeHtml(a.accountNumber)} (${escapeHtml(a.accountType)})</option>`).join('')
+      : '<option value="">Sin cuentas disponibles</option>';
+    const assetOptionsForNew = ADMIN_ASSET_OPTIONS.map((a) => `<option value="${a.asset}|${a.symbol}">${escapeHtml(a.name)}</option>`).join('');
+
+    return `
+      <tr class="user-edit-row" data-user-edit-row="${u.id}">
+        <td colspan="7">
+          <div class="user-edit-panel">
+            <h4>Cuentas de ${escapeHtml(u.fullName || u.username)}</h4>
+            ${accountsHtml}
+            <h4 style="margin-top:16px;">Posiciones (holdings)</h4>
+            ${holdingsHtml}
+            ${
+              u.accounts.length
+                ? `
+              <div class="pending-item admin-edit-card admin-edit-new-holding">
+                <div class="pending-item-top"><span class="pending-item-user">Agregar posición nueva</span></div>
+                <div class="pending-item-fields">
+                  <div class="field pending-item-field" style="min-width:150px;">
+                    <label>Cuenta</label>
+                    <select data-role="new-holding-account">${accountOptionsForNew}</select>
+                  </div>
+                  <div class="field pending-item-field" style="min-width:170px;">
+                    <label>Activo</label>
+                    <select data-role="new-holding-asset">${assetOptionsForNew}</select>
+                  </div>
+                  <div class="field pending-item-field" style="min-width:100px;">
+                    <label>Cantidad</label>
+                    <input type="number" step="any" min="0.00000001" data-role="new-holding-quantity" placeholder="0.00" />
+                  </div>
+                  <div class="field pending-item-field" style="min-width:110px;">
+                    <label>Precio prom. (USD)</label>
+                    <input type="number" step="any" min="0.00000001" data-role="new-holding-avgprice" placeholder="0.00" />
+                  </div>
+                </div>
+                <div class="pending-item-actions">
+                  <button class="btn btn-secondary btn-sm" data-action="create-holding" data-user-id="${u.id}">Crear posición</button>
+                </div>
+                ${itemErrorHtml('new-holding', u.id)}
+              </div>
+            `
+                : ''
+            }
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
   function renderUsers(users) {
+    usersCache = users;
     const empty = document.getElementById('users-empty');
     const table = document.getElementById('users-table');
     const body = document.getElementById('users-table-body');
@@ -292,7 +546,8 @@
         const rankBadge = u.rank
           ? `<span class="badge-pill rank-${u.rank.key}">${escapeHtml(RANK_LABELS[u.rank.key] || u.rank.label)}</span>`
           : '<span class="badge-pill">Sin insignia</span>';
-        return `
+        const isExpanded = expandedUserIds.has(u.id);
+        const row = `
           <tr>
             <td>
               <strong>${escapeHtml(u.fullName || u.username)}</strong><br />
@@ -306,10 +561,120 @@
             <td>${accountsText}</td>
             <td>${u.documentsCount}</td>
             <td>${u.createdAt ? fieldDate(u.createdAt) : '—'}</td>
+            <td><button class="btn btn-ghost btn-sm" data-action="toggle-user-edit" data-user-id="${u.id}">${isExpanded ? 'Ocultar' : 'Editar'}</button></td>
           </tr>
         `;
+        return isExpanded ? row + renderUserEditPanel(u) : row;
       })
       .join('');
+
+    wireUserEditHandlers();
+  }
+
+  function wireUserEditHandlers() {
+    document.querySelectorAll('[data-action="toggle-user-edit"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const userId = Number(btn.dataset.userId);
+        if (expandedUserIds.has(userId)) {
+          expandedUserIds.delete(userId);
+        } else {
+          expandedUserIds.add(userId);
+        }
+        renderUsers(usersCache);
+      });
+    });
+
+    document.querySelectorAll('[data-action="save-account"]').forEach((btn) => {
+      btn.addEventListener('click', () => saveAccountEdit(Number(btn.dataset.accountId)));
+    });
+    document.querySelectorAll('[data-action="save-holding"]').forEach((btn) => {
+      btn.addEventListener('click', () => saveHoldingEdit(Number(btn.dataset.holdingId)));
+    });
+    document.querySelectorAll('[data-action="delete-holding"]').forEach((btn) => {
+      btn.addEventListener('click', () => deleteHolding(Number(btn.dataset.holdingId)));
+    });
+    document.querySelectorAll('[data-action="create-holding"]').forEach((btn) => {
+      btn.addEventListener('click', () => createHolding(Number(btn.dataset.userId)));
+    });
+  }
+
+  async function saveAccountEdit(accountId) {
+    const balanceInput = document.querySelector(`[data-role="balance"][data-account-id="${accountId}"]`);
+    const equityInput = document.querySelector(`[data-role="equity"][data-account-id="${accountId}"]`);
+    const leverageInput = document.querySelector(`[data-role="leverage"][data-account-id="${accountId}"]`);
+
+    const fields = {};
+    if (balanceInput.value.trim() !== '') fields.balance = Number(balanceInput.value);
+    if (equityInput.value.trim() !== '') fields.equity = Number(equityInput.value);
+    if (leverageInput.value.trim() !== '') fields.leverage = leverageInput.value.trim();
+
+    if (!Object.keys(fields).length) {
+      return showItemError('account', accountId, 'Escribe al menos un valor nuevo antes de guardar');
+    }
+
+    try {
+      await Api.adminEditAccount(accountId, fields);
+      showToast('Cambio guardado — se aplicará en 1-2 minutos', 'success');
+      loadPending();
+    } catch (err) {
+      showItemError('account', accountId, err.message);
+    }
+  }
+
+  async function saveHoldingEdit(holdingId) {
+    const quantityInput = document.querySelector(`[data-role="quantity"][data-holding-id="${holdingId}"]`);
+    const avgPriceInput = document.querySelector(`[data-role="avgPrice"][data-holding-id="${holdingId}"]`);
+
+    const fields = {};
+    if (quantityInput.value.trim() !== '') fields.quantity = Number(quantityInput.value);
+    if (avgPriceInput.value.trim() !== '') fields.avgPrice = Number(avgPriceInput.value);
+
+    if (!Object.keys(fields).length) {
+      return showItemError('holding', holdingId, 'Escribe al menos un valor nuevo antes de guardar');
+    }
+
+    try {
+      await Api.adminEditHolding(holdingId, fields);
+      showToast('Cambio guardado — se aplicará en 1-2 minutos', 'success');
+      loadPending();
+    } catch (err) {
+      showItemError('holding', holdingId, err.message);
+    }
+  }
+
+  async function deleteHolding(holdingId) {
+    if (!window.confirm('¿Eliminar esta posición? Se aplicará en 1-2 minutos, igual que el resto de los cambios.')) return;
+    try {
+      await Api.adminDeleteHolding(holdingId);
+      showToast('Eliminación agendada — se aplicará en 1-2 minutos', 'info');
+      loadPending();
+    } catch (err) {
+      showItemError('holding', holdingId, err.message);
+    }
+  }
+
+  async function createHolding(userId) {
+    const accountSelect = document.querySelector('[data-role="new-holding-account"]');
+    const assetSelect = document.querySelector('[data-role="new-holding-asset"]');
+    const quantityInput = document.querySelector('[data-role="new-holding-quantity"]');
+    const avgPriceInput = document.querySelector('[data-role="new-holding-avgprice"]');
+
+    const accountId = Number(accountSelect.value);
+    const [asset, symbol] = String(assetSelect.value).split('|');
+    const quantity = Number(quantityInput.value);
+    const avgPrice = Number(avgPriceInput.value);
+
+    if (!accountId) return showItemError('new-holding', userId, 'Selecciona una cuenta');
+    if (!Number.isFinite(quantity) || quantity <= 0) return showItemError('new-holding', userId, 'Ingresa una cantidad válida mayor a 0');
+    if (!Number.isFinite(avgPrice) || avgPrice <= 0) return showItemError('new-holding', userId, 'Ingresa un precio promedio válido mayor a 0');
+
+    try {
+      await Api.adminCreateHolding({ userId, accountId, asset, symbol, quantity, avgPrice });
+      showToast('Posición creada — se aplicará en 1-2 minutos', 'success');
+      loadPending();
+    } catch (err) {
+      showItemError('new-holding', userId, err.message);
+    }
   }
 
   // ---- Documentos de usuarios (subidos desde "Mi perfil") ----
@@ -531,6 +896,7 @@
         </div>
         <div class="pending-item-meta">
           ${t.side === 'compra' ? 'Compra' : 'Venta'} solicitada: <strong>${t.requestedQuantity} ${escapeHtml(t.symbol)}</strong> a ${money(t.requestedPrice)} c/u
+          ${t.source === 'auto' ? '<span class="auto-trade-tag" title="Generada automáticamente por el motor de auto-inversión Diamante/Platino">🤖 Automática</span>' : ''}
         </div>
         <div class="pending-item-fields">
           <div class="field pending-item-field" style="min-width:120px;">

@@ -25,7 +25,12 @@ const {
   getAllDocuments,
   getDocumentById,
   getAllUsersAdminView,
+  requestAccountEdit,
+  requestHoldingEdit,
+  requestHoldingCreate,
+  requestHoldingDelete,
 } = require('../data/store');
+const { getAllTickets, replyToTicket } = require('../data/support');
 const { getFilePath } = require('../data/files');
 const {
   getAdminConfig: getZenithConfig,
@@ -75,9 +80,9 @@ router.get('/pending', requireAdmin, (req, res) => {
 });
 
 // GET /api/admin/users — todos los usuarios registrados, con su perfil
-// completo, cuentas/balances, insignia aproximada y cantidad de
-// documentos subidos. Es de solo lectura: no permite editar los datos
-// personales de nadie desde acá (a propósito, ver nota en data/store.js).
+// completo, cuentas/balances/posiciones (con equity y leverage incluidos,
+// para poder editarlos), insignia aproximada y cantidad de documentos
+// subidos.
 router.get('/users', requireAdmin, (req, res) => {
   res.json(getAllUsersAdminView());
 });
@@ -87,6 +92,63 @@ router.get('/users', requireAdmin, (req, res) => {
 router.get('/users/:userId/accounts', requireAdmin, (req, res) => {
   const userId = Number(req.params.userId);
   res.json(getAccountsByUser(userId));
+});
+
+// ---- Edición directa de usuarios (balance, equity, leverage, posiciones) ----
+//
+// A pedido de Lucas: puede corregir directamente lo que ve un cliente sin
+// que este tenga que pedir nada primero. El cambio queda agendado (misma
+// demora de 1-2 min que el resto del sitio, ver data/store.js) — no se ve
+// al instante ni siquiera del lado del admin la próxima vez que recarga
+// "Usuarios registrados" hasta que se aplica de verdad.
+
+// PUT /api/admin/accounts/:id/edit { balance?, equity?, leverage? }
+router.put('/accounts/:id/edit', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const fields = {};
+  if (req.body.balance !== undefined) fields.balance = Number(req.body.balance);
+  if (req.body.equity !== undefined) fields.equity = Number(req.body.equity);
+  if (req.body.leverage !== undefined) fields.leverage = String(req.body.leverage);
+
+  const result = requestAccountEdit({ id, fields });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.account);
+});
+
+// POST /api/admin/holdings { userId, accountId, asset, symbol, quantity, avgPrice }
+// -> crea una posición nueva para ese usuario (queda invisible para él
+// hasta que se aplique).
+router.post('/holdings', requireAdmin, (req, res) => {
+  const userId = Number(req.body.userId);
+  const accountId = Number(req.body.accountId);
+  const { asset, symbol } = req.body;
+  const quantity = Number(req.body.quantity);
+  const avgPrice = Number(req.body.avgPrice);
+
+  const result = requestHoldingCreate({ userId, accountId, asset, symbol, quantity, avgPrice });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.status(201).json(result.holding);
+});
+
+// PUT /api/admin/holdings/:id/edit { quantity?, avgPrice? }
+router.put('/holdings/:id/edit', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const fields = {};
+  if (req.body.quantity !== undefined) fields.quantity = Number(req.body.quantity);
+  if (req.body.avgPrice !== undefined) fields.avgPrice = Number(req.body.avgPrice);
+
+  const result = requestHoldingEdit({ id, fields });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.holding);
+});
+
+// DELETE /api/admin/holdings/:id -> elimina una posición (con la misma
+// demora simulada, no al instante).
+router.delete('/holdings/:id', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const result = requestHoldingDelete({ id });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.holding);
 });
 
 // ---- Depósitos ----
@@ -161,6 +223,24 @@ router.put('/trades/:id/reject', requireAdmin, (req, res) => {
   const result = rejectTrade({ id });
   if (result.error) return res.status(400).json({ error: result.error });
   res.json(result);
+});
+
+// ---- Buzón de quejas y peticiones (soporte) ----
+
+// GET /api/admin/support -> todas las peticiones de todos los clientes,
+// abiertas primero.
+router.get('/support', requireAdmin, (req, res) => {
+  res.json(getAllTickets());
+});
+
+// PUT /api/admin/support/:id/reply { reply } -> responde una petición; se
+// ve del lado del cliente de inmediato (no pasa por la demora de 1-2 min,
+// esto no mueve saldo ni cantidades, es solo un mensaje de soporte).
+router.put('/support/:id/reply', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const result = replyToTicket({ id, reply: req.body.reply });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result.ticket);
 });
 
 // ---- Documentos subidos por los usuarios ----

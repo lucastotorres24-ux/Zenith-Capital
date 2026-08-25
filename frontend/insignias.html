@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Zenith Capital — Comunidad</title>
+<title>Zenith Capital — Insignias Zenith</title>
 <link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
 <script>
@@ -59,48 +59,38 @@
 
 <main class="page">
 
-  <div class="page-header">
-    <div>
-      <h1>Comunidad Zenith</h1>
-      <p class="subtitle">Clientes certificados Zenith de todos los rangos, conversando sobre el mercado y la plataforma.</p>
-    </div>
-  </div>
+  <section class="insignias-hero">
+    <span class="insignias-hero-tag">Programa de rangos</span>
+    <h1>Insignias Zenith</h1>
+    <p class="subtitle">
+      Cada peso que inviertes te acerca a un nuevo nivel. Sube de rango y desbloquea
+      privilegios reales dentro de la plataforma — hasta llegar a automatizar tus
+      propias inversiones con Zenith.
+    </p>
 
-  <section class="section community-layout">
-    <div class="community-members">
-      <h3 class="community-members-title">Clientes certificados</h3>
-      <div id="community-members-list" class="community-members-list">
-        <!-- se llena por JS -->
-      </div>
-    </div>
-
-    <div class="community-chat">
-      <div class="community-chat-feed" id="community-feed">
-        <!-- se llena por JS -->
-      </div>
-      <form class="community-composer" id="community-composer">
-        <input
-          id="community-composer-input"
-          type="text"
-          maxlength="500"
-          placeholder="Escribe algo para la comunidad…"
-          autocomplete="off"
-          required
-        />
-        <button type="submit" class="btn btn-primary" id="community-composer-submit">Enviar</button>
-      </form>
-      <div class="form-error" id="community-composer-error">
-        <span>⚠</span>
-        <span id="community-composer-error-text"></span>
+    <div class="insignias-current-card" id="insignias-current-card">
+      <div class="insignias-current-label">Tu rango actual</div>
+      <div class="insignias-current-value" id="insignias-current-value">Cargando…</div>
+      <div class="insignias-current-progress">
+        <div class="insignias-progress-track">
+          <div class="insignias-progress-fill" id="insignias-progress-fill" style="width:0%;"></div>
+        </div>
+        <div class="insignias-progress-note" id="insignias-progress-note">Calculando tu progreso…</div>
       </div>
     </div>
   </section>
 
-  <p class="community-disclaimer">
-    💡 Los demás clientes de esta comunidad son simulados — sus mensajes se generan automáticamente para
-    ambientar la plataforma de práctica y no provienen de personas reales. Tus mensajes sí son reales y
-    recibirás una respuesta de la comunidad poco después de enviarlos.
-  </p>
+  <section class="insignias-grid" id="insignias-grid">
+    <!-- se llena por JS -->
+  </section>
+
+  <section class="insignias-cta">
+    <div>
+      <h2>¿Listo para subir de nivel?</h2>
+      <p class="subtitle">Cada depósito cuenta para tu progreso hacia el siguiente rango.</p>
+    </div>
+    <a class="btn btn-primary btn-lg" href="dashboard.html">💰 Ir a depositar</a>
+  </section>
 
 </main>
 
@@ -158,6 +148,6 @@
 <script src="assets/js/config.js"></script>
 <script src="assets/js/site-gate.js"></script>
 <script src="assets/js/api.js"></script>
-<script src="assets/js/community.js"></script>
+<script src="assets/js/insignias.js"></script>
 </body>
 </html>

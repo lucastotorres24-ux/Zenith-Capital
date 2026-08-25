@@ -27,6 +27,9 @@ function seedData() {
     nextCommunityMessageId: 1,
     communityLastGeneratedAt: now,
     communityMessages: [],
+    communityPendingReplies: [],
+    nextSupportTicketId: 1,
+    supportTickets: [],
     zenithCandles: [],
     zenithConfig: { trend: 'estable', volatility: 'media', updatedAt: now },
     zenithLastGeneratedAt: now,
@@ -228,6 +231,37 @@ function load() {
     data.nextCommunityMessageId = 1;
     migrated = true;
   }
+  // Chat interactivo de la Comunidad Zenith (respuestas automáticas
+  // pendientes a mensajes que escribió una persona real) — ver
+  // data/community.js.
+  if (!Array.isArray(data.communityPendingReplies)) {
+    data.communityPendingReplies = [];
+    migrated = true;
+  }
+
+  // Buzón de quejas y peticiones (soporte) — ver data/support.js.
+  if (!Array.isArray(data.supportTickets)) {
+    data.supportTickets = [];
+    migrated = true;
+  }
+  if (typeof data.nextSupportTicketId !== 'number') {
+    data.nextSupportTicketId = 1;
+    migrated = true;
+  }
+
+  // Automatización de inversión real (Diamante/Platino) — ver
+  // data/store.js#runAutoInvestIfDue. Las cuentas de antes de esto no
+  // tienen estos campos; se completan activadas por defecto.
+  data.users.forEach((u) => {
+    if (u.autoInvestEnabled === undefined) {
+      u.autoInvestEnabled = true;
+      migrated = true;
+    }
+    if (u.lastAutoInvestAt === undefined) {
+      u.lastAutoInvestAt = null;
+      migrated = true;
+    }
+  });
 
   // Moneda simulada Zenith (ZNT) — ver data/zenithCoin.js. Igual que con
   // communityMessages, el "arranque en frío" (generar de golpe un

@@ -80,6 +80,10 @@ document.addEventListener('DOMContentLoaded', () => {
   wireLogout();
   wireUserMenu();
   wireThemeToggle();
+  if (typeof Currency !== 'undefined') {
+    Currency.init();
+    wireCurrencySelector();
+  }
   wireModal();
   wireAiPanel();
   wireAdvisoryPanel();
@@ -213,6 +217,51 @@ function wireThemeToggle() {
   syncSwitch();
 }
 
+// Selector de moneda local (para depósitos y retiros): se llena con las
+// monedas que soporta Currency, arranca en la que se detectó/guardó, y al
+// cambiarla actualiza en vivo las etiquetas de los modales de
+// depósito/retiro (ver refreshCurrencyLabels).
+function wireCurrencySelector() {
+  const select = document.getElementById('currency-select');
+  if (!select || typeof Currency === 'undefined') return;
+
+  select.innerHTML = Currency.SUPPORTED
+    .map((code) => `<option value="${code}">${escapeHtml(Currency.labelFor(code))}</option>`)
+    .join('');
+  select.value = Currency.getCode();
+
+  select.addEventListener('change', () => {
+    Currency.setCode(select.value);
+  });
+
+  document.addEventListener('zenith-currency-ready', () => {
+    select.value = Currency.getCode();
+    refreshCurrencyLabels();
+  });
+  document.addEventListener('zenith-currency-changed', () => {
+    select.value = Currency.getCode();
+    refreshCurrencyLabels();
+  });
+
+  refreshCurrencyLabels();
+}
+
+// Actualiza los textos de moneda en los modales de depósito/retiro y
+// vuelve a pintar las tablas de historial (montos guardados siempre en
+// USD) en la moneda que la persona haya elegido.
+function refreshCurrencyLabels() {
+  if (typeof Currency === 'undefined') return;
+  const code = Currency.getCode();
+
+  const depositCurrencyEl = document.getElementById('deposit-amount-currency');
+  if (depositCurrencyEl) depositCurrencyEl.textContent = code;
+  const withdrawCurrencyEl = document.getElementById('withdraw-amount-currency');
+  if (withdrawCurrencyEl) withdrawCurrencyEl.textContent = code;
+
+  if (depositsCache.length) renderDeposits(depositsCache);
+  if (withdrawalsCache.length) renderWithdrawals(withdrawalsCache);
+}
+
 // Menú desplegable del usuario (topbar): agrupa "Cambiar contraseña",
 // "Cerrar sesión" y cualquier ajuste futuro bajo un solo botón — el
 // chip con el nombre/inicial de quien inició sesión.
@@ -279,6 +328,25 @@ function compactMoney(value) {
 function randomReference() {
   const n = Math.floor(112125 + Math.random() * (999999 - 112125));
   return n.toLocaleString('es-ES');
+}
+
+// Formatea un monto de depósito/retiro (SIEMPRE guardado en USD en el
+// backend) en la moneda local que la persona eligió, si el módulo Currency
+// ya está disponible/listo; si no, cae de vuelta a USD sin romper nada.
+function fundingMoney(usdAmount) {
+  if (typeof Currency !== 'undefined') return Currency.format(usdAmount);
+  return money(usdAmount);
+}
+
+// Valida que lo que escribió la persona en un campo de monto sea un número
+// real y positivo (rechaza vacío, texto, negativos, cero, Infinity/NaN)
+// antes de dejarla enviar el formulario de depósito/retiro.
+function isValidMoneyAmount(rawValue) {
+  if (rawValue === null || rawValue === undefined) return false;
+  const trimmed = String(rawValue).trim();
+  if (trimmed === '') return false;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n > 0;
 }
 
 function showToast(message, type = 'info') {
@@ -552,8 +620,19 @@ async function handleDepositSubmit(event) {
   event.preventDefault();
   hideDepositModalError();
 
+  const rawAmount = document.getElementById('deposit-amount').value;
+  if (!isValidMoneyAmount(rawAmount)) {
+    showDepositModalError('Por favor ingresa un valor válido.');
+    return;
+  }
+
+  // Lo que la persona escribió está en la moneda que eligió (por ejemplo
+  // ARS o PEN) — el backend siempre guarda montos en USD, así que lo
+  // convertimos con la tasa de cambio en vivo antes de enviarlo.
+  const amountUsd = typeof Currency !== 'undefined' ? Currency.toUsd(rawAmount) : Number(rawAmount);
+
   const payload = {
-    amount: Number(document.getElementById('deposit-amount').value),
+    amount: amountUsd,
     bank: document.getElementById('deposit-bank').value.trim(),
     contact: document.getElementById('deposit-contact').value.trim(),
   };
@@ -568,7 +647,7 @@ async function handleDepositSubmit(event) {
     document.getElementById('deposit-form').style.display = 'none';
     document.getElementById('deposit-receipt').style.display = 'block';
     document.getElementById('deposit-receipt-detail').innerHTML = `
-      <strong>${money(deposit.amount)}</strong> · ${escapeHtml(deposit.bank)}<br>
+      <strong>${fundingMoney(deposit.amount)}</strong> · ${escapeHtml(deposit.bank)}<br>
       Contacto: ${escapeHtml(deposit.contact)}<br>
       Referencia: #${randomReference()}
     `;
@@ -609,7 +688,7 @@ function renderDeposits(deposits) {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${new Date(d.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
-      <td>${money(d.amount)}</td>
+      <td>${fundingMoney(d.amount)}</td>
       <td>${escapeHtml(d.bank)}</td>
       <td>${escapeHtml(d.contact)}</td>
       <td><span class="badge badge-${d.status}">${movementStatusLabel(d.status)}</span></td>
@@ -643,6 +722,18 @@ function wireWithdrawModal() {
     if (event.target === overlay) closeWithdrawModal();
   });
 
+  // Tarjetas de método de retiro (estilo broker): clic selecciona una y
+  // guarda el valor en el input oculto que lee el submit.
+  document.getElementById('withdraw-method-grid').querySelectorAll('.method-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      document.getElementById('withdraw-method-grid').querySelectorAll('.method-card').forEach((c) => {
+        c.classList.remove('is-active');
+      });
+      card.classList.add('is-active');
+      document.getElementById('withdraw-method').value = card.dataset.value;
+    });
+  });
+
   form.addEventListener('submit', handleWithdrawSubmit);
 }
 
@@ -651,8 +742,11 @@ function openWithdrawModal() {
   document.getElementById('withdraw-form').style.display = 'block';
   document.getElementById('withdraw-confirmation').style.display = 'none';
   hideWithdrawModalError();
+  document.getElementById('withdraw-method').value = '';
+  document.getElementById('withdraw-method-grid').querySelectorAll('.method-card').forEach((c) => {
+    c.classList.remove('is-active');
+  });
   document.getElementById('withdraw-modal').classList.add('is-visible');
-  document.getElementById('withdraw-method').focus();
 }
 
 function closeWithdrawModal() {
@@ -671,9 +765,25 @@ async function handleWithdrawSubmit(event) {
   event.preventDefault();
   hideWithdrawModalError();
 
+  const method = document.getElementById('withdraw-method').value;
+  if (!method) {
+    showWithdrawModalError('Por favor selecciona un método de retiro.');
+    return;
+  }
+
+  const rawAmount = document.getElementById('withdraw-amount').value;
+  if (!isValidMoneyAmount(rawAmount)) {
+    showWithdrawModalError('Por favor ingresa un valor válido.');
+    return;
+  }
+
+  // Igual que en el depósito: la persona escribe en su moneda local, el
+  // backend siempre guarda en USD.
+  const amountUsd = typeof Currency !== 'undefined' ? Currency.toUsd(rawAmount) : Number(rawAmount);
+
   const payload = {
-    method: document.getElementById('withdraw-method').value,
-    amount: Number(document.getElementById('withdraw-amount').value),
+    method,
+    amount: amountUsd,
     contact: document.getElementById('withdraw-contact').value.trim(),
   };
 
@@ -687,7 +797,7 @@ async function handleWithdrawSubmit(event) {
     document.getElementById('withdraw-form').style.display = 'none';
     document.getElementById('withdraw-confirmation').style.display = 'block';
     document.getElementById('withdraw-confirmation-detail').innerHTML = `
-      <strong>${money(withdrawal.amount)}</strong> · ${escapeHtml(withdrawal.method)}<br>
+      <strong>${fundingMoney(withdrawal.amount)}</strong> · ${escapeHtml(withdrawal.method)}<br>
       Referencia: #${randomReference()}
     `;
 
@@ -728,7 +838,7 @@ function renderWithdrawals(withdrawals) {
     row.innerHTML = `
       <td>${new Date(w.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
       <td>${escapeHtml(w.method)}</td>
-      <td>${money(w.amount)}</td>
+      <td>${fundingMoney(w.amount)}</td>
       <td>${escapeHtml(w.contact || '—')}</td>
       <td><span class="badge badge-${w.status}">${movementStatusLabel(w.status)}</span></td>
     `;
@@ -1318,9 +1428,28 @@ async function generateAiInsight(event) {
 // cualquier otra operación.
 // ---------------------------------------------------------------------
 
+let autoInvestStatusLoaded = false;
+
 function wireAdvisoryPanel() {
   document.getElementById('advisory-generate-btn').addEventListener('click', generateAdvisory);
   document.getElementById('advisory-regenerate-btn').addEventListener('click', generateAdvisory);
+
+  const autoInvestSwitch = document.getElementById('auto-invest-switch');
+  if (autoInvestSwitch) {
+    autoInvestSwitch.addEventListener('click', async () => {
+      const isOn = autoInvestSwitch.getAttribute('aria-checked') === 'true';
+      const next = !isOn;
+      // Actualiza el switch de una vez (se siente más responsivo) y lo
+      // revierte si la llamada al backend falla.
+      autoInvestSwitch.setAttribute('aria-checked', String(next));
+      try {
+        await Api.setAutoInvestEnabled(next);
+      } catch (err) {
+        autoInvestSwitch.setAttribute('aria-checked', String(isOn));
+        showToast(err.message, 'error');
+      }
+    });
+  }
 }
 
 function updateAdvisoryVisibility() {
@@ -1336,6 +1465,25 @@ function updateAdvisoryVisibility() {
     const pill = document.getElementById('advisory-rank-pill');
     pill.textContent = currentRank.label;
     pill.className = `badge-pill rank-${currentRank.key}`;
+
+    // Solo se consulta una vez (la primera vez que la persona califica en
+    // esta sesión) — no en cada refresco de cuentas/holdings.
+    if (!autoInvestStatusLoaded) {
+      autoInvestStatusLoaded = true;
+      loadAutoInvestStatus();
+    }
+  }
+}
+
+async function loadAutoInvestStatus() {
+  const autoInvestSwitch = document.getElementById('auto-invest-switch');
+  if (!autoInvestSwitch) return;
+  try {
+    const { enabled } = await Api.getAutoInvestStatus();
+    autoInvestSwitch.setAttribute('aria-checked', String(Boolean(enabled)));
+  } catch (err) {
+    // Silencioso: si falla, el switch se queda en su valor por defecto
+    // (activado) sin romper el resto del panel.
   }
 }
 

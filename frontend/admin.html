@@ -88,7 +88,7 @@
     <div class="section-header">
       <div>
         <h2>Usuarios registrados</h2>
-        <div class="subtitle">Cada persona que abre una cuenta aparece acá, con su perfil, cuentas e insignia — de solo lectura (para editar montos, usa las colas de abajo).</div>
+        <div class="subtitle">Cada persona que abre una cuenta aparece acá, con su perfil, cuentas e insignia. Usa "Editar" para cambiar directamente su balance, equity, apalancamiento o posiciones — el cambio tarda 1-2 min en aplicarse, igual que el resto del sitio.</div>
       </div>
       <span class="badge" id="users-count">0</span>
     </div>
@@ -107,6 +107,7 @@
               <th>Cuentas</th>
               <th>Documentos</th>
               <th>Registrado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="users-table-body"></tbody>
@@ -203,6 +204,23 @@
         <div>No hay compras/ventas pendientes por el momento.</div>
       </div>
       <div id="pending-trades-list" class="pending-list"></div>
+    </div>
+  </section>
+
+  <section class="section" style="margin-top: 24px;">
+    <div class="section-header">
+      <div>
+        <h2>Buzón de soporte</h2>
+        <div class="subtitle">Peticiones y quejas de los clientes, identificadas por su número NIT. Tu respuesta se ve del lado del cliente de inmediato.</div>
+      </div>
+      <span class="badge" id="support-open-count">0</span>
+    </div>
+    <div class="section-body">
+      <div class="empty-state" id="support-empty">
+        <div class="icon">📮</div>
+        <div>No hay peticiones en el buzón por el momento.</div>
+      </div>
+      <div id="support-list" class="pending-list"></div>
     </div>
   </section>
 

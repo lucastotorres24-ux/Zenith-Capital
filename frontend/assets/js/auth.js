@@ -1,6 +1,11 @@
 // Lógica de la pantalla de login/registro (index.html)
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Detecta la moneda local por ubicación desde ya (aunque esta pantalla no
+  // la use directamente) para que, apenas la persona entre al dashboard,
+  // ya esté lista sin tener que esperar esa llamada.
+  if (typeof Currency !== 'undefined') Currency.init();
+
   // Si ya hay sesión, no tiene sentido ver el login de nuevo.
   if (Api.isLoggedIn()) {
     window.location.href = 'dashboard.html';
@@ -36,6 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   tabLogin.addEventListener('click', () => activateTab('login'));
   tabRegister.addEventListener('click', () => activateTab('register'));
+
+  const goToRegisterLink = document.getElementById('go-to-register-link');
+  if (goToRegisterLink) {
+    goToRegisterLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      activateTab('register');
+    });
+  }
 
   function setLoading(button, loading, labelWhileLoading) {
     button.disabled = loading;

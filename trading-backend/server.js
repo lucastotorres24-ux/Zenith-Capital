@@ -13,8 +13,10 @@ const adminRoutes = require('./routes/admin');
 const documentsRoutes = require('./routes/documents');
 const communityRoutes = require('./routes/community');
 const marketRoutes = require('./routes/market');
+const currencyRoutes = require('./routes/currency');
+const supportRoutes = require('./routes/support');
 const { requireSiteAccess } = require('./middleware/siteAccess');
-const { runDueAdminActions } = require('./data/store');
+const { runDueAdminActions, runAutoInvestIfDue } = require('./data/store');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -53,6 +55,15 @@ app.use((req, res, next) => {
   } catch (err) {
     console.error('Error aplicando acciones de administrador pendientes:', err);
   }
+  // Motor de auto-inversión real (Diamante/Platino, ver data/store.js):
+  // igual que arriba, se revisa en cada request en vez de con un
+  // temporizador de fondo, para que sobreviva reinicios/sueño del
+  // servidor.
+  try {
+    runAutoInvestIfDue();
+  } catch (err) {
+    console.error('Error corriendo el motor de auto-inversión:', err);
+  }
   next();
 });
 
@@ -81,6 +92,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/community', communityRoutes);
 app.use('/api/market', marketRoutes);
+app.use('/api/currency', currencyRoutes);
+app.use('/api/support', supportRoutes);
 
 // Manejo simple de rutas no encontradas
 app.use((req, res) => {

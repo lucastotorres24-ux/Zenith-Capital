@@ -67,6 +67,11 @@
             <span class="theme-switch-knob"></span>
           </button>
         </div>
+        <div class="user-menu-item currency-select-row">
+          <span class="user-menu-item-icon">💱</span>
+          <span class="theme-toggle-label">Moneda de depósitos/retiros</span>
+          <select class="currency-select" id="currency-select" aria-label="Moneda de depósitos y retiros"></select>
+        </div>
         <div class="user-menu-divider"></div>
         <button class="user-menu-item user-menu-item-danger" id="logout-btn" type="button">
           <span class="user-menu-item-icon">↪</span> Cerrar sesión
@@ -108,6 +113,16 @@
       <p class="subtitle">Conversa (de forma simulada) con otros clientes certificados Zenith de todos los rangos.</p>
     </div>
     <a class="btn btn-secondary btn-lg" href="community.html">💬 Ver comunidad</a>
+  </section>
+
+  <!-- Banner de Insignias Zenith -->
+  <section class="trading-cta trading-cta-community">
+    <div class="trading-cta-text">
+      <span class="trading-cta-tag">Rangos</span>
+      <h2>Insignias Zenith</h2>
+      <p class="subtitle">Descubre qué privilegios desbloqueas en cada rango — hasta automatizar tus inversiones en Diamante y Platino.</p>
+    </div>
+    <a class="btn btn-secondary btn-lg" href="insignias.html">🏅 Ver insignias</a>
   </section>
 
   <!-- Stat tiles -->
@@ -177,6 +192,16 @@
       <span class="badge-pill" id="advisory-rank-pill">Diamante</span>
     </div>
     <div class="section-body">
+
+      <div class="auto-invest-row" id="auto-invest-row">
+        <div class="auto-invest-row-text">
+          <strong>Automatización de inversión (Zenith · ZNT)</strong>
+          <span>El sistema decide y abre operaciones sobre Zenith por ti, siguiendo la tendencia del mercado. Cada operación igual pasa por la misma revisión de 1-2 min de siempre.</span>
+        </div>
+        <button class="theme-switch" id="auto-invest-switch" type="button" role="switch" aria-checked="true" aria-label="Activar o desactivar la automatización de inversión">
+          <span class="theme-switch-knob"></span>
+        </button>
+      </div>
 
       <div class="empty-state" id="advisory-empty">
         <div class="icon">🧠</div>
@@ -412,6 +437,57 @@
 
 </main>
 
+<footer class="site-footer">
+  <div class="site-footer-grid">
+    <div class="site-footer-col">
+      <div class="site-footer-brand">
+        <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+        <span>Zenith Capital</span>
+      </div>
+      <p>Plataforma de práctica para aprender trading e inversión — ningún saldo, precio ni operación de este sitio es dinero real.</p>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Tecnología</h4>
+      <ul>
+        <li><a href="https://www.investopedia.com/terms/b/blockchain.asp" target="_blank" rel="noopener">Qué es blockchain</a></li>
+        <li><a href="https://ethereum.org/es/what-is-ethereum/" target="_blank" rel="noopener">Qué es Ethereum</a></li>
+      </ul>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Mercado y noticias</h4>
+      <ul>
+        <li><a href="https://www.coindesk.com" target="_blank" rel="noopener">CoinDesk</a></li>
+        <li><a href="https://www.reuters.com/markets/" target="_blank" rel="noopener">Reuters Markets</a></li>
+        <li><a href="https://www.bloomberg.com/markets" target="_blank" rel="noopener">Bloomberg Markets</a></li>
+        <li><a href="https://www.investor.gov" target="_blank" rel="noopener">Investor.gov (SEC)</a></li>
+      </ul>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Producto</h4>
+      <ul>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="trading-panel.html">Panel de Trading</a></li>
+        <li><a href="community.html">Comunidad Zenith</a></li>
+        <li><a href="insignias.html">Insignias Zenith</a></li>
+      </ul>
+    </div>
+
+    <div class="site-footer-col">
+      <h4>Contacto</h4>
+      <ul>
+        <li><a href="support.html">Buzón de quejas y peticiones</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="site-footer-bottom">
+    Zenith Capital es una plataforma de práctica con fines educativos. Ningún contenido de este sitio constituye asesoría financiera real ni mueve dinero real.
+  </div>
+</footer>
+
 <!-- Modal crear/editar cuenta -->
 <div class="modal-overlay" id="account-modal">
   <div class="modal">
@@ -496,21 +572,72 @@
     </div>
 
     <form id="deposit-form">
-      <div class="funding-trust-note">
-        <span class="funding-trust-icon">🔒</span>
-        <div>
-          <strong>Depósitos verificados manualmente.</strong> Un asesor de cuentas confirma la transferencia y acredita el saldo en 1 a 2 minutos hábiles. Aceptamos transferencias en USD, COP, MXN y EUR desde cualquier banco.
+      <div class="trust-badges">
+        <span class="trust-badge"><span class="trust-badge-icon">⚡</span> Acreditación en 1-2 min</span>
+        <span class="trust-badge"><span class="trust-badge-icon">🔒</span> Revisión segura</span>
+        <span class="trust-badge"><span class="trust-badge-icon">🌍</span> Multi-moneda</span>
+      </div>
+
+      <div class="field">
+        <label>Método de depósito</label>
+        <div class="method-grid">
+          <button type="button" class="method-card is-active" data-value="Transferencia bancaria" disabled>
+            <span class="method-card-icon">🏦</span>
+            <span class="method-card-name">Transferencia bancaria</span>
+            <span class="method-card-time">~1-2 min</span>
+          </button>
+          <button type="button" class="method-card" disabled title="Próximamente">
+            <span class="method-card-icon">🟡</span>
+            <span class="method-card-name">Binance</span>
+            <span class="method-card-soon">Próximamente</span>
+          </button>
+          <button type="button" class="method-card" disabled title="Próximamente">
+            <span class="method-card-icon">🔵</span>
+            <span class="method-card-name">Coinbase</span>
+            <span class="method-card-soon">Próximamente</span>
+          </button>
+          <button type="button" class="method-card" disabled title="Próximamente">
+            <span class="method-card-icon">💳</span>
+            <span class="method-card-name">Tarjeta</span>
+            <span class="method-card-soon">Próximamente</span>
+          </button>
         </div>
       </div>
 
       <div class="field">
-        <label for="deposit-amount">¿Cuánto?</label>
+        <label for="deposit-amount">¿Cuánto? (<span id="deposit-amount-currency">USD</span>)</label>
         <input id="deposit-amount" type="number" step="0.01" min="0.01" placeholder="500" required />
+        <span class="field-hint" id="deposit-amount-hint">Ingresa un monto real y válido.</span>
       </div>
 
       <div class="field">
         <label for="deposit-bank">Banco</label>
-        <input id="deposit-bank" placeholder="Ej. Bancolombia, BBVA, Banco de Chile..." required />
+        <select id="deposit-bank" required>
+          <option value="" disabled selected>Selecciona tu banco</option>
+          <optgroup label="Argentina">
+            <option value="Banco de la Nación Argentina">Banco de la Nación Argentina</option>
+            <option value="Banco de la Provincia de Buenos Aires">Banco de la Provincia de Buenos Aires</option>
+            <option value="Banco Santander Río">Banco Santander Río</option>
+            <option value="Banco Galicia">Banco Galicia</option>
+            <option value="BBVA Argentina">BBVA Argentina</option>
+            <option value="Banco Macro">Banco Macro</option>
+            <option value="HSBC Bank Argentina">HSBC Bank Argentina</option>
+            <option value="Banco Credicoop">Banco Credicoop</option>
+          </optgroup>
+          <optgroup label="Perú">
+            <option value="Banco de Crédito del Perú (BCP)">Banco de Crédito del Perú (BCP)</option>
+            <option value="BBVA Perú">BBVA Perú</option>
+            <option value="Interbank">Interbank</option>
+            <option value="Scotiabank Perú">Scotiabank Perú</option>
+            <option value="Banco de la Nación">Banco de la Nación</option>
+            <option value="BanBif">BanBif</option>
+            <option value="Banco Pichincha">Banco Pichincha</option>
+            <option value="Mibanco">Mibanco</option>
+          </optgroup>
+          <optgroup label="Otro">
+            <option value="Otro banco">Otro banco / billetera internacional</option>
+          </optgroup>
+        </select>
       </div>
 
       <div class="field">
@@ -522,13 +649,6 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" id="deposit-modal-cancel">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="deposit-modal-submit">Confirmar</button>
-      </div>
-
-      <div class="deposit-alt-method">
-        <span class="deposit-alt-divider">o</span>
-        <button type="button" class="btn btn-secondary btn-block" disabled title="Próximamente: pago con tarjeta">
-          💳 Pagar con tarjeta (próximamente)
-        </button>
       </div>
     </form>
 
@@ -560,27 +680,43 @@
     </div>
 
     <form id="withdraw-form">
-      <div class="funding-trust-note">
-        <span class="funding-trust-icon">🛡️</span>
-        <div>
-          <strong>Retiros con revisión manual.</strong> Confirmamos cada solicitud antes de procesarla — el saldo se descuenta en 1 a 2 minutos hábiles una vez aprobada, para tu seguridad.
+      <div class="trust-badges">
+        <span class="trust-badge"><span class="trust-badge-icon">🛡️</span> Revisión manual</span>
+        <span class="trust-badge"><span class="trust-badge-icon">⚡</span> Procesado en 1-2 min</span>
+        <span class="trust-badge"><span class="trust-badge-icon">🔒</span> Retiro seguro</span>
+      </div>
+
+      <div class="field">
+        <label>Método de retiro</label>
+        <div class="method-grid" id="withdraw-method-grid">
+          <button type="button" class="method-card" data-value="Binance">
+            <span class="method-card-icon">🟡</span>
+            <span class="method-card-name">Binance</span>
+            <span class="method-card-time">~1-2 min</span>
+          </button>
+          <button type="button" class="method-card" data-value="Coinbase">
+            <span class="method-card-icon">🔵</span>
+            <span class="method-card-name">Coinbase</span>
+            <span class="method-card-time">~1-2 min</span>
+          </button>
+          <button type="button" class="method-card" data-value="Trust Wallet">
+            <span class="method-card-icon">🔷</span>
+            <span class="method-card-name">Trust Wallet</span>
+            <span class="method-card-time">~1-2 min</span>
+          </button>
+          <button type="button" class="method-card" data-value="Transferencia bancaria">
+            <span class="method-card-icon">🏦</span>
+            <span class="method-card-name">Transferencia bancaria</span>
+            <span class="method-card-time">~1-2 min</span>
+          </button>
         </div>
+        <input type="hidden" id="withdraw-method" />
       </div>
 
       <div class="field">
-        <label for="withdraw-method">Método de retiro</label>
-        <select id="withdraw-method" required>
-          <option value="" disabled selected>Selecciona un método</option>
-          <option value="Binance">Binance</option>
-          <option value="Coinbase">Coinbase</option>
-          <option value="Trust Wallet">Trust Wallet</option>
-          <option value="Transferencia bancaria">Transferencia bancaria</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="withdraw-amount">¿Cuánto quieres retirar?</label>
+        <label for="withdraw-amount">¿Cuánto quieres retirar? (<span id="withdraw-amount-currency">USD</span>)</label>
         <input id="withdraw-amount" type="number" step="0.01" min="0.01" placeholder="200" required />
+        <span class="field-hint" id="withdraw-amount-hint">Ingresa un monto real y válido.</span>
       </div>
 
       <div class="field">
@@ -821,6 +957,7 @@
 <script src="assets/js/config.js"></script>
 <script src="assets/js/site-gate.js"></script>
 <script src="assets/js/api.js"></script>
+<script src="assets/js/currency.js"></script>
 <script src="assets/js/dashboard.js"></script>
 </body>
 </html>

@@ -30,6 +30,7 @@ const RANK_LABELS = {
 };
 
 let lastRenderedCount = 0;
+let currentUserId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
@@ -37,13 +38,52 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
+  currentUserId = Api.getUser()?.id ?? null;
+
   renderUserChip();
   wireLogout();
+  wireComposer();
   renderMembers();
 
   loadMessages();
   setInterval(loadMessages, COMMUNITY_REFRESH_MS);
 });
+
+// ---------------------------------------------------------------------
+// Composer: la persona logueada puede escribir de verdad. El mensaje
+// queda publicado de una vez; la respuesta de un cliente simulado llega
+// sola unos segundos/minutos después, en el próximo refresco automático.
+// ---------------------------------------------------------------------
+
+function wireComposer() {
+  const form = document.getElementById('community-composer');
+  const input = document.getElementById('community-composer-input');
+  const errorBox = document.getElementById('community-composer-error');
+  const errorText = document.getElementById('community-composer-error-text');
+  if (!form) return;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorBox.classList.remove('is-visible');
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    const submitBtn = document.getElementById('community-composer-submit');
+    submitBtn.disabled = true;
+    try {
+      await Api.postCommunityMessage(text);
+      input.value = '';
+      await loadMessages();
+    } catch (err) {
+      errorText.textContent = err.message;
+      errorBox.classList.add('is-visible');
+    } finally {
+      submitBtn.disabled = false;
+      input.focus();
+    }
+  });
+}
 
 function renderUserChip() {
   const user = Api.getUser();
@@ -104,21 +144,28 @@ function renderFeed(messages) {
   const hadMessages = lastRenderedCount > 0;
 
   feed.innerHTML = messages
-    .map(
-      (m) => `
-        <div class="chat-message">
-          <span class="user-avatar rank-${m.badge}">${initials(m.clientName)}</span>
+    .map((m) => {
+      const isOwn = Boolean(m.isUser) && currentUserId != null && m.userId === currentUserId;
+      // Un mensaje real puede venir de alguien todavía sin insignia (menos
+      // de $250 invertidos) — se muestra "Sin rango" en vez de "undefined".
+      const badgeKey = m.badge || null;
+      const badgeLabel = badgeKey ? RANK_LABELS[badgeKey] : 'Sin rango';
+      const avatarClass = badgeKey ? `rank-${badgeKey}` : '';
+      const nameLabel = isOwn ? 'Tú' : escapeHtml(m.clientName);
+      return `
+        <div class="chat-message${isOwn ? ' is-own' : ''}">
+          <span class="user-avatar ${avatarClass}">${initials(m.clientName)}</span>
           <div class="chat-message-body">
             <div class="chat-message-header">
-              <span class="chat-message-name">${escapeHtml(m.clientName)}</span>
-              <span class="badge-pill rank-${m.badge}">${RANK_LABELS[m.badge]}</span>
+              <span class="chat-message-name">${nameLabel}</span>
+              <span class="badge-pill ${avatarClass}">${badgeLabel}</span>
               <span class="chat-message-time">${new Date(m.createdAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
             <div class="chat-message-text">${escapeHtml(m.text)}</div>
           </div>
         </div>
-      `
-    )
+      `;
+    })
     .join('');
 
   // Solo hace auto-scroll si ya estaba abajo del todo (o es la primera

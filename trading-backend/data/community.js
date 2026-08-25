@@ -63,6 +63,132 @@ function buildMessageText() {
   return template.replace('{asset}', pick(ASSETS));
 }
 
+// ---------------------------------------------------------------------
+// Chat interactivo: la persona que inició sesión puede escribir de verdad,
+// y recibe una respuesta automática de un cliente simulado poco después
+// (con un pequeño retraso, para que no se sienta como un robot
+// respondiendo al instante). Igual que el resto de esta pantalla, la
+// respuesta se resuelve de forma perezosa (ver resolvePendingReplies) en
+// vez de con un setTimeout, para que sobreviva un reinicio/sueño del
+// servidor.
+// ---------------------------------------------------------------------
+
+const REPLY_DELAY_MIN_MS = 15 * 1000;
+const REPLY_DELAY_MAX_MS = 70 * 1000;
+const MAX_MESSAGE_LENGTH = 500;
+
+const REPLY_TEMPLATES = [
+  '¡Bienvenido a la conversación, {name}! ¿Cuánto llevas en Zenith?',
+  'Buen punto, {name}.',
+  'Totalmente de acuerdo, he tenido una experiencia parecida.',
+  'Gracias por compartir, {name} — siempre ayuda ver la perspectiva de otros.',
+  'Yo también estuve mirando eso hace poco.',
+  'Interesante lo que dices, {name}.',
+  'Ánimo con eso, a mí también me ha tocado tomar decisiones así.',
+  '¡Exacto! Por eso me gusta esta comunidad, se comparte harto por acá.',
+  'Buena reflexión, {name}. Por acá pensamos parecido.',
+  'Gracias por el aporte, se agradece que la comunidad esté activa.',
+];
+
+const REPLY_TEMPLATES_WITH_ASSET = [
+  'Con {asset} yo también he visto movimientos así últimamente.',
+  '¿{asset}? Yo llevo un tiempo mirando esa también, {name}.',
+  'Cuidado con {asset}, se ha movido bastante volátil esta semana.',
+  'Cierto, {asset} viene dando de qué hablar por acá también.',
+  'Yo tengo posición en {asset} — coincido con lo que dices, {name}.',
+];
+
+function firstName(nameOrUsername) {
+  const clean = String(nameOrUsername || '').trim();
+  return clean.split(' ')[0] || 'amigo';
+}
+
+function detectAssetMention(text) {
+  const upper = String(text || '').toUpperCase();
+  return ASSETS.find((a) => upper.includes(a)) || null;
+}
+
+function buildReplyText(userText, userName) {
+  const mentioned = detectAssetMention(userText);
+  const name = firstName(userName);
+  if (mentioned && Math.random() < 0.6) {
+    return pick(REPLY_TEMPLATES_WITH_ASSET).replace('{asset}', mentioned).replace('{name}', name);
+  }
+  return pick(REPLY_TEMPLATES).replace('{name}', name);
+}
+
+// Crea el mensaje del cliente real de una vez, y programa (no genera
+// todavía) la respuesta automática de un cliente simulado.
+function postUserMessage({ userId, name, badge, text }) {
+  const cleanText = String(text || '').trim().slice(0, MAX_MESSAGE_LENGTH);
+  if (!cleanText) return { error: 'Escribe algo antes de enviar.' };
+
+  const db = load();
+  const message = {
+    id: db.nextCommunityMessageId++,
+    clientName: name,
+    badge: badge || null,
+    text: cleanText,
+    createdAt: new Date().toISOString(),
+    isUser: true,
+    userId,
+  };
+  db.communityMessages.push(message);
+
+  if (!db.communityPendingReplies) db.communityPendingReplies = [];
+  const delay = REPLY_DELAY_MIN_MS + Math.random() * (REPLY_DELAY_MAX_MS - REPLY_DELAY_MIN_MS);
+  db.communityPendingReplies.push({
+    forMessageId: message.id,
+    userText: cleanText,
+    userName: name,
+    respondAt: new Date(Date.now() + delay).toISOString(),
+    fulfilled: false,
+  });
+
+  if (db.communityMessages.length > MAX_STORED_MESSAGES) {
+    db.communityMessages = db.communityMessages.slice(-MAX_STORED_MESSAGES);
+  }
+
+  save(db);
+  return { message };
+}
+
+// Revisa si ya le toca responder a alguna respuesta pendiente (su plazo
+// al azar ya se cumplió) y, si es así, agrega el mensaje de respuesta de
+// un cliente simulado al azar.
+function resolvePendingReplies() {
+  const db = load();
+  if (!db.communityPendingReplies || !db.communityPendingReplies.length) return;
+
+  const now = Date.now();
+  let changed = false;
+
+  db.communityPendingReplies.forEach((pending) => {
+    if (pending.fulfilled) return;
+    if (new Date(pending.respondAt).getTime() > now) return;
+
+    const client = pick(FAKE_CLIENTS);
+    db.communityMessages.push({
+      id: db.nextCommunityMessageId++,
+      clientName: client.name,
+      badge: client.badge,
+      text: buildReplyText(pending.userText, pending.userName),
+      createdAt: new Date().toISOString(),
+      replyToUser: true,
+    });
+    pending.fulfilled = true;
+    changed = true;
+  });
+
+  if (!changed) return;
+
+  db.communityPendingReplies = db.communityPendingReplies.filter((p) => !p.fulfilled);
+  if (db.communityMessages.length > MAX_STORED_MESSAGES) {
+    db.communityMessages = db.communityMessages.slice(-MAX_STORED_MESSAGES);
+  }
+  save(db);
+}
+
 // Cada cuántos segundos (en promedio) aparece un mensaje nuevo cuando el
 // feed está "al día". Se agrega algo de variación (0.5x a 1.5x) para que
 // no se sienta perfectamente mecánico. Lucas pidió que la comunidad se
@@ -113,8 +239,9 @@ function ensureMessagesGenerated() {
 
 function getRecentMessages(limit = 60) {
   ensureMessagesGenerated();
+  resolvePendingReplies();
   const db = load();
   return db.communityMessages.slice(-limit);
 }
 
-module.exports = { getRecentMessages, FAKE_CLIENTS };
+module.exports = { getRecentMessages, postUserMessage, FAKE_CLIENTS };

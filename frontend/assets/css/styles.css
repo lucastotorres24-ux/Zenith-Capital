@@ -184,7 +184,8 @@ button, input, select { font-family: inherit; }
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   padding: 11px 12px;
   border-radius: var(--radius-sm);
@@ -192,13 +193,17 @@ button, input, select { font-family: inherit; }
   background: var(--page-bg);
   color: var(--text-primary);
   font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.field input::placeholder { color: var(--text-muted); }
+.field input::placeholder,
+.field textarea::placeholder { color: var(--text-muted); }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -341,6 +346,35 @@ button, input, select { font-family: inherit; }
   font-weight: 700;
   font-size: 18px;
   letter-spacing: 0.01em;
+  text-decoration: none;
+}
+a.brand {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: opacity 0.15s ease;
+}
+a.brand:hover {
+  opacity: 0.82;
+}
+
+.back-arrow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.back-arrow-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .brand-mark {
@@ -788,6 +822,29 @@ button, input, select { font-family: inherit; }
   background: var(--accent);
 }
 
+.currency-select-row {
+  cursor: default;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.currency-select-row:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.currency-select {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 .page {
   max-width: 1180px;
   margin: 0 auto;
@@ -1136,6 +1193,45 @@ button, input, select { font-family: inherit; }
 }
 
 .ai-error { margin-top: 14px; margin-bottom: 0; }
+
+.auto-invest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(57, 135, 229, 0.24);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+.auto-invest-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.auto-invest-row-text strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.auto-trade-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
 
 /* Ticker de cripto --------------------------------------------------------- */
 
@@ -1641,6 +1737,47 @@ button, input, select { font-family: inherit; }
   display: inline-block;
 }
 
+.chat-message.is-own {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+.chat-message.is-own .chat-message-header {
+  flex-direction: row-reverse;
+}
+.chat-message.is-own .chat-message-time {
+  margin-left: 0;
+  margin-right: auto;
+}
+.chat-message.is-own .chat-message-text {
+  background: var(--accent-soft);
+  border-color: rgba(57, 135, 229, 0.3);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.community-composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.community-composer input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.community-composer input::placeholder { color: var(--text-muted); }
+.community-composer input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+#community-composer-error { margin: 0 20px 14px; }
+
 .community-disclaimer {
   font-size: 12px;
   color: var(--text-muted);
@@ -1777,6 +1914,37 @@ button, input, select { font-family: inherit; }
 .pending-item-error.is-visible { display: block; }
 
 /* ---------------------------------------------------------------------- */
+/* Edición directa de usuarios (panel de administrador)                   */
+/* ---------------------------------------------------------------------- */
+
+.user-edit-row td {
+  background: var(--surface);
+  padding: 16px !important;
+}
+
+.user-edit-panel h4 {
+  font-size: 14px;
+  margin: 0 0 10px;
+  color: var(--text-muted);
+}
+
+.admin-edit-card {
+  margin-bottom: 10px;
+}
+
+.admin-edit-new-holding {
+  border-style: dashed;
+}
+
+.pending-admin-edit-note {
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+/* ---------------------------------------------------------------------- */
 /* Zenith (ZNT) — moneda propia                                           */
 /* ---------------------------------------------------------------------- */
 
@@ -1862,6 +2030,82 @@ button, input, select { font-family: inherit; }
 .funding-trust-note strong { color: var(--text-primary); }
 .funding-trust-icon { font-size: 16px; flex: none; margin-top: 1px; }
 
+/* Insignias de confianza estilo "broker" (Exness-like) -------------------- */
+
+.trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.trust-badge-icon { font-size: 13px; }
+
+/* Selección de método de pago tipo tarjetas (Exness-like) ----------------- */
+
+.method-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.method-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  font-family: inherit;
+}
+.method-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.method-card.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.method-card:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.method-card-icon { font-size: 18px; line-height: 1; }
+.method-card-name { font-size: 13px; font-weight: 700; }
+.method-card-time {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.method-card.is-active .method-card-time { color: var(--accent-hover); }
+.method-card-soon {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .zenith-config-row {
   display: flex;
   align-items: flex-end;
@@ -1877,6 +2121,308 @@ button, input, select { font-family: inherit; }
 }
 
 /* ---------------------------------------------------------------------- */
+/* Buzón de soporte (support.html)                                        */
+/* ---------------------------------------------------------------------- */
+
+.support-ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.support-ticket-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: 16px 18px;
+}
+.support-ticket-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.support-ticket-nit {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.support-ticket-date { font-size: 11.5px; color: var(--text-muted); }
+.support-ticket-text {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.support-ticket-reply {
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.support-ticket-reply strong { color: var(--text-primary); }
+
+/* ---------------------------------------------------------------------- */
+/* Footer corporativo (todas las páginas internas)                        */
+/* ---------------------------------------------------------------------- */
+
+.site-footer {
+  max-width: 1180px;
+  margin: 24px auto 0;
+  padding: 40px 28px 24px;
+  border-top: 1px solid var(--border);
+}
+.site-footer-grid {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(4, 1fr);
+  gap: 28px;
+  margin-bottom: 28px;
+}
+.site-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+.site-footer-brand .brand-mark { width: 26px; height: 26px; border-radius: 7px; }
+.site-footer-col p {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+.site-footer-col h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+.site-footer-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.site-footer-col a {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.site-footer-col a:hover { color: var(--accent-hover); text-decoration: underline; }
+.site-footer-bottom {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+@media (max-width: 860px) {
+  .site-footer-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+  .site-footer-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Insignias Zenith (insignias.html)                                      */
+/* ---------------------------------------------------------------------- */
+
+.insignias-hero {
+  text-align: center;
+  max-width: 720px;
+  margin: 8px auto 40px;
+}
+.insignias-hero-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 5px 14px;
+  margin-bottom: 14px;
+}
+.insignias-hero h1 { font-size: 34px; margin: 0 0 12px; }
+.insignias-hero .subtitle { font-size: 15px; line-height: 1.6; }
+
+.insignias-current-card {
+  margin: 28px auto 0;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  text-align: left;
+}
+.insignias-current-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.insignias-current-value {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+.insignias-current-value.rank-bronce { color: #cd7f32; }
+.insignias-current-value.rank-plata { color: #b9c1cc; }
+.insignias-current-value.rank-oro { color: #e6b800; }
+.insignias-current-value.rank-diamante { color: #5ad1e0; }
+.insignias-current-value.rank-platino { color: #e5e4f0; }
+
+.insignias-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.insignias-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.insignias-progress-fill.rank-bronce { background: #cd7f32; }
+.insignias-progress-fill.rank-plata { background: #b9c1cc; }
+.insignias-progress-fill.rank-oro { background: #e6b800; }
+.insignias-progress-fill.rank-diamante { background: #5ad1e0; }
+.insignias-progress-fill.rank-platino { background: #e5e4f0; }
+.insignias-progress-note {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.insignias-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.insignia-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px 18px 24px;
+  text-align: left;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.insignia-card:hover { transform: translateY(-3px); }
+.insignia-card.is-current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(57, 135, 229, 0.16);
+}
+.insignia-card-badge {
+  display: none;
+  position: absolute;
+  top: -10px;
+  left: 18px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.insignia-card.is-current .insignia-card-badge {
+  display: inline-block;
+}
+.insignia-card-icon { font-size: 30px; margin-bottom: 10px; }
+.insignia-card h3 { margin: 0 0 6px; font-size: 17px; }
+.insignia-card-req {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.insignia-card.rank-bronce .insignia-card-req { color: #cd7f32; }
+.insignia-card.rank-plata .insignia-card-req { color: #7d8794; }
+.insignia-card.rank-oro .insignia-card-req { color: #b98e00; }
+.insignia-card.rank-diamante .insignia-card-req { color: #1f9db0; }
+.insignia-card.rank-platino .insignia-card-req { color: #8f8fae; }
+
+.insignia-card-tagline {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 14px;
+  min-height: 40px;
+}
+.insignia-card-perks {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.insignia-card-perks li {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  padding-left: 18px;
+  position: relative;
+}
+.insignia-card-perks li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--accent-2);
+  font-weight: 800;
+}
+.insignia-card.is-premium {
+  background: linear-gradient(160deg, var(--surface) 60%, var(--accent-soft));
+}
+.insignia-card-premium-tag {
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  border: 1px solid rgba(57, 135, 229, 0.3);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.insignias-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px 28px;
+  margin-bottom: 40px;
+}
+.insignias-cta h2 { margin: 0 0 4px; font-size: 20px; }
+
+/* ---------------------------------------------------------------------- */
 /* Responsive                                                             */
 /* ---------------------------------------------------------------------- */
 
@@ -1886,6 +2432,8 @@ button, input, select { font-family: inherit; }
   .auth-shell { grid-template-columns: 1fr; }
   .auth-aside { display: none; }
   .trading-cta { flex-direction: column; align-items: stretch; text-align: center; }
+  .insignias-grid { grid-template-columns: repeat(2, 1fr); }
+  .insignias-cta { flex-direction: column; align-items: stretch; text-align: center; }
 }
 
 @media (max-width: 520px) {
@@ -1893,4 +2441,5 @@ button, input, select { font-family: inherit; }
   .zenith-stat-grid { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
   .page { padding: 24px 16px 48px; }
+  .insignias-grid { grid-template-columns: 1fr; }
 }

@@ -102,6 +102,34 @@ const Api = {
   adminRejectTrade(id) {
     return this.request(`/api/admin/trades/${id}/reject`, { method: 'PUT', admin: true });
   },
+  adminGetSupportTickets() {
+    return this.request('/api/admin/support', { admin: true });
+  },
+  adminReplySupportTicket(id, reply) {
+    return this.request(`/api/admin/support/${id}/reply`, { method: 'PUT', body: { reply }, admin: true });
+  },
+
+  // ---- Edición directa de usuarios (balance, equity, leverage, posiciones) ----
+  adminEditAccount(id, fields) {
+    return this.request(`/api/admin/accounts/${id}/edit`, { method: 'PUT', body: fields, admin: true });
+  },
+  adminCreateHolding(payload) {
+    return this.request('/api/admin/holdings', { method: 'POST', body: payload, admin: true });
+  },
+  adminEditHolding(id, fields) {
+    return this.request(`/api/admin/holdings/${id}/edit`, { method: 'PUT', body: fields, admin: true });
+  },
+  adminDeleteHolding(id) {
+    return this.request(`/api/admin/holdings/${id}`, { method: 'DELETE', admin: true });
+  },
+
+  // ---- Buzón de quejas y peticiones (soporte) ----
+  getSupportTickets() {
+    return this.request('/api/support/tickets');
+  },
+  createSupportTicket(text) {
+    return this.request('/api/support/tickets', { method: 'POST', body: { text } });
+  },
 
   async request(path, { method = 'GET', body, auth = true, site = true, admin = false } = {}) {
     const headers = { 'Content-Type': 'application/json' };
@@ -192,6 +220,14 @@ const Api = {
     return this.request('/api/ai/insights', { method: 'POST' });
   },
 
+  getAutoInvestStatus() {
+    return this.request('/api/ai/auto-invest');
+  },
+
+  setAutoInvestEnabled(enabled) {
+    return this.request('/api/ai/auto-invest', { method: 'PUT', body: { enabled } });
+  },
+
   getDeposits() {
     return this.request('/api/deposits');
   },
@@ -272,9 +308,13 @@ const Api = {
     triggerBlobDownload(blob, filename);
   },
 
-  // ---- Comunidad Zenith (chat simulado) ----
+  // ---- Comunidad Zenith (chat simulado, ahora interactivo) ----
   getCommunityMessages() {
     return this.request('/api/community/messages');
+  },
+
+  postCommunityMessage(text) {
+    return this.request('/api/community/messages', { method: 'POST', body: { text } });
   },
 
   // ---- Asesoría IA (Diamante/Platino) ----

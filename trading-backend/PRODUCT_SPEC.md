@@ -51,6 +51,13 @@ así no hay que repetir el contexto en cada conversación.
   simulada de 1 a 2 minutos** antes de aplicarse de verdad — ver sección 16.
 - **Panel de usuarios registrados, moneda simulada Zenith (ZNT) y modo
   claro/oscuro** — ver secciones 16 y 17 (agosto 2026).
+- **Navegación de vuelta al dashboard, bancos reales de Argentina/Perú,
+  rediseño estilo Exness de depositar/retirar, moneda local con conversión
+  real, página propia de Insignias Zenith, auto-inversión real
+  (Diamante/Platino), Comunidad Zenith interactiva (chat de dos vías),
+  footer corporativo, buzón de soporte con NIT, y edición directa de
+  usuarios desde el panel de administrador** — ver sección 18 (agosto
+  2026) para el detalle completo de esta tanda.
   - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
     asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
     elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
@@ -671,12 +678,19 @@ para la descripción orientada al usuario).
   de aprobación: una fila por usuario con su perfil (usuario/contacto),
   insignia actual, resumen de cuentas (cantidad + balance total),
   cantidad de documentos subidos, y fecha de registro.
-- Alcance confirmado con Lucas: **"ver todo, editar lo operativo"** — esta
-  tabla es de solo lectura (perfil, insignia, documentos); para editar
-  montos/cantidades se sigue usando la cola de aprobación de abajo, no esta
-  tabla. No hay edición de datos personales del usuario desde acá.
+- Alcance original (agosto 2026, primera versión): **"ver todo, editar lo
+  operativo"** — la tabla era de solo lectura (perfil, insignia,
+  documentos) y para editar montos/cantidades solo se podía usar la cola de
+  aprobación de abajo. **Esto cambió más adelante, en la misma agosto
+  2026**: a pedido explícito de Lucas, ahora sí se puede editar
+  directamente el balance/equity/apalancamiento de una cuenta y las
+  posiciones de cualquier usuario desde esta misma tabla, sin pasar por la
+  cola de aprobación — ver sección 18.10 para el detalle completo. Sigue
+  sin haber edición de datos personales (nombre, correo, teléfono) desde
+  acá — eso no se pidió y queda fuera de alcance por ahora.
 - `GET /api/admin/users` (`getAllUsersAdminView` en `data/store.js`) arma
-  la vista combinando usuarios + cuentas + documentos + insignia calculada.
+  la vista combinando usuarios + cuentas (con balance/equity/leverage) +
+  posiciones + documentos + insignia calculada.
 
 ### 16.3 Moneda simulada Zenith (ZNT)
 
@@ -751,6 +765,214 @@ para la descripción orientada al usuario).
   navegación) — Lucas pidió explícitamente mantener el contexto de lo ya
   construido; los ajustes de esta sección son sobre estética y tono, no
   sobre la estructura.
+
+## 18. Navegación, bancos reales, rediseño Exness, moneda local, Insignias (página), auto-inversión real, Comunidad interactiva, footer corporativo, buzón de soporte y edición directa de admin — construido (agosto 2026)
+
+Segunda tanda grande de features pedida por Lucas en un solo mensaje, con
+4 respuestas de aclaración ya incorporadas al construir: auto-inversión
+Diamante/Platino = **ejecución automática real** (no solo sugerencias);
+edición directa de admin = **misma demora de 1-2 min** que el resto del
+sitio; respuestas del buzón de soporte = **solo dentro de la plataforma**
+(no correo real); moneda por ubicación = **conversión real con tasas de
+cambio** (no solo el símbolo).
+
+### 18.1 Navegación
+
+- El logo (arriba a la izquierda) ahora es un link a `dashboard.html` en
+  todas las páginas internas (antes era solo una imagen decorativa).
+- Todas las páginas internas que no son el dashboard (`trading-panel.html`,
+  `community.html`, `insignias.html`, `support.html`) tienen además una
+  flecha "←" junto al chip de usuario, con el mismo destino, para que
+  siempre haya una forma obvia de volver sin usar el botón "atrás" del
+  navegador.
+- Pantalla de acceso (`index.html`): el aviso que antes mostraba las
+  credenciales de la cuenta demo se reemplazó por una invitación real a
+  registrarse ("¿No tienes cuenta? Regístrate aquí"), ya que el objetivo
+  final es que personas reales se registren, no que dependan de una cuenta
+  de prueba compartida.
+
+### 18.2 Depósitos: bancos reales de Argentina y Perú
+
+- El campo "Banco" del formulario de depósito pasó de texto libre a un
+  `<select>` con bancos reales agrupados por país (`<optgroup>`):
+  8 bancos de Argentina (Banco Nación, Provincia de Buenos Aires, Santander
+  Río, Galicia, BBVA Argentina, Macro, HSBC Argentina, Credicoop) y 8 de
+  Perú (BCP, BBVA Perú, Interbank, Scotiabank Perú, Banco de la Nación,
+  BanBif, Banco Pichincha, Mibanco), más una opción "Otro banco / billetera
+  internacional" para cualquier otro caso. Es solo texto elegido de una
+  lista — no hay integración real con ningún banco, sigue siendo el mismo
+  flujo de depósito con aprobación manual de siempre.
+
+### 18.3 Rediseño visual estilo Exness (depositar / retirar)
+
+- Los modales de Depositar y Retirar se rediseñaron visualmente inspirados
+  en el estilo de brokers como Exness — sin agregar ni quitar ningún método
+  de pago real (sigue siendo transferencia bancaria para depósitos, y
+  Binance/Coinbase/Trust Wallet/transferencia para retiros).
+- **Depositar**: fila de "trust badges" (Acreditación en 1-2 min / Revisión
+  segura / Multi-moneda), y una grilla de tarjetas de método en vez del
+  `<select>` de antes — solo "Transferencia bancaria" está activa;
+  Binance/Coinbase/Tarjeta se muestran como tarjetas deshabilitadas
+  "Próximamente" (mismo criterio de seguridad de siempre: nunca se pide un
+  número de tarjeta real sin un procesador de pago detrás).
+- **Retirar**: el `<select>` de método se reemplazó por la misma grilla de
+  tarjetas (Binance / Coinbase / Trust Wallet / Transferencia bancaria,
+  las 4 ya existentes, ahora seleccionables como tarjetas en vez de opciones
+  de lista) más su propia fila de trust badges.
+- Ningún contrato del backend cambió — mismos campos, mismos endpoints,
+  misma cola de aprobación manual con demora de 1-2 min.
+
+### 18.4 Moneda local del cliente (detección + conversión real)
+
+- **Backend** (`data/currency.js` + `routes/currency.js`, sin
+  autenticación): `GET /api/currency/detect` ubica el país del visitante
+  por IP (usa `x-forwarded-for`/`req.ip`, se salta IPs privadas/locales) y
+  devuelve una moneda sugerida; `GET /api/currency/rates` trae tasas de
+  cambio reales contra USD (fuente pública, sin API key) con una caché de 1
+  hora y una tabla de respaldo fija (`FALLBACK_RATES`) para cuando no hay
+  salida a internet — en el sandbox de desarrollo no hay acceso a APIs
+  externas, así que siempre se ve el respaldo ahí; en Render (con salida a
+  internet real) debería traer tasas en vivo.
+- **Frontend** (`assets/js/currency.js`, módulo `Currency`): el usuario
+  elige su moneda preferida desde un selector nuevo en el menú de usuario
+  (ARS, PEN, COP, MXN, CLP, EUR, BRL además de USD) — se detecta
+  automáticamente la primera vez y después queda guardada en el navegador.
+- **Dónde se usa**: **solo** en los formularios de Depositar/Retirar (el
+  monto se muestra y se escribe en la moneda elegida, y se convierte a USD
+  justo antes de mandarlo al backend) y en las tablas de historial de
+  depósitos/retiros. **A propósito no se aplica** a los balances/holdings
+  de las cuentas (que ya tienen su propio campo `currency` para
+  USD/EUR/USDT) ni a ningún otro número de la plataforma — evita el riesgo
+  de una doble conversión o un balance que "no cuadra" con lo que el
+  usuario recuerda haber depositado. Todo el cálculo interno (balances,
+  holdings, depósitos, retiros) sigue guardándose en USD; la conversión es
+  puramente de visualización/entrada en esos dos formularios.
+
+### 18.5 Insignias Zenith — página propia (`insignias.html`)
+
+- Página nueva, accesible desde un banner destacado en el dashboard y desde
+  el footer, que presenta el programa de rangos completo (mismos 5 niveles
+  y umbrales de la sección 15.1: Bronce $250 / Plata $800 / Oro $1.500 /
+  Diamante $5.000 / Platino $10.000+) con una narrativa más inspiradora:
+  tarjeta de "tu rango actual" con barra de progreso hacia el siguiente
+  nivel, y una grilla de 5 tarjetas (una por rango) con una lista de
+  privilegios por nivel — desde "acceso completo al panel de trading" en
+  Bronce hasta "automatización de inversión con ajustes en tiempo real" en
+  Platino. Los privilegios de Diamante/Platino ya son reales (ver 18.6 y
+  15.3), los del resto son beneficios de producto (prioridad de revisión,
+  reportes de IA más detallados, etc.) pensados para dar una razón concreta
+  de subir de nivel.
+- No agrega ningún endpoint nuevo — reutiliza el mismo cálculo de insignia
+  del dashboard (`RANK_TIERS`/`getRankForAmount`).
+
+### 18.6 Auto-inversión real (Diamante y Platino)
+
+- A diferencia de la Asesoría IA (sección 15.3, que **solo sugiere** en
+  texto), esta es **ejecución automática real** — a pedido explícito de
+  Lucas. Cada usuario con insignia Diamante o Platino puede activar/
+  desactivar la automatización desde un switch en la sección "Asesoría IA"
+  del dashboard (`GET`/`PUT /api/ai/auto-invest`, activada por defecto).
+- **Alcance importante, ya conversado**: el motor solo opera el activo
+  propio **Zenith (ZNT)** — no criptomonedas reales. Motivo técnico: los
+  precios de BTC/ETH/etc. los trae cada navegador directo de CoinGecko, sin
+  pasar nunca por el backend, así que el servidor no tiene ninguna fuente
+  de precio propia y confiable para operarlas por su cuenta. ZNT sí tiene
+  precio autoritativo en el servidor (`data/zenithCoin.js`), así que es el
+  único activo donde una decisión automática del backend tiene sentido.
+- Motor (`runAutoInvestIfDue` en `data/store.js`, revisado en cada request
+  igual que el resto de la generación perezosa del proyecto, cada 12
+  minutos por usuario): sigue la variación 24h de ZNT — si viene subiendo
+  más de 0.2%, arma una compra de hasta 5% del balance de la cuenta con más
+  saldo del usuario (mínimo $10); si viene bajando más de 0.2%, arma una
+  venta de hasta 5% de lo que ya tiene en ZNT. Nunca ejecuta una operación
+  de golpe: la crea con `source: 'auto'` y entra a la **misma cola de
+  aprobación de administrador** que cualquier compra/venta manual (misma
+  demora de 1-2 min) — Lucas conserva el control final sobre todo lo que
+  mueve saldo, tal cual el resto de la plataforma. El panel de
+  administrador marca estas operaciones con una etiqueta "🤖 Automática"
+  para diferenciarlas de las manuales.
+
+### 18.7 Comunidad Zenith interactiva (chat de dos vías)
+
+- Hasta ahora la Comunidad Zenith (sección 15.2) era un feed de solo
+  lectura. Ahora el usuario puede escribir sus propios mensajes
+  (`POST /api/community/messages`, hasta 500 caracteres) y aparecen de
+  inmediato en el feed, marcados visualmente como propios.
+- Cada mensaje de un usuario real recibe una respuesta simulada de uno de
+  los 10 clientes ficticios, con una demora aleatoria de 15 a 70 segundos
+  (se siente como que alguien está escribiendo, no una respuesta
+  instantánea de robot) — misma arquitectura perezosa de siempre
+  (`communityPendingReplies` en la base de datos, resuelto en cada consulta
+  al feed, sin ningún proceso corriendo en segundo plano). Si el mensaje
+  del usuario menciona un activo conocido (BTC, ETH, SOL, etc.), hay 60% de
+  probabilidad de que la respuesta lo mencione también, para que se sienta
+  relevante a lo que se escribió.
+- Sigue siendo, como siempre, una comunidad simulada — el aviso permanente
+  al pie de página se actualizó para aclarar que los mensajes propios del
+  usuario sí son reales, pero las respuestas y el resto de los
+  participantes no lo son.
+
+### 18.8 Footer corporativo con enlaces reales
+
+- Se agregó un footer (`site-footer`) a todas las páginas internas
+  (dashboard, panel de trading, comunidad, insignias, soporte) con 4
+  columnas: **Tecnología** (qué es blockchain / qué es Ethereum, enlaces a
+  Investopedia y ethereum.org), **Mercado y noticias** (CoinDesk, Reuters
+  Markets, Bloomberg Markets, Investor.gov/SEC), **Producto** (enlaces
+  internos: Dashboard, Panel de Trading, Comunidad, Insignias) y
+  **Contacto** (enlace al nuevo buzón de soporte, sección 18.9).
+- A propósito **no** se inventaron nombres de empresas "partner" ficticias
+  (para no insinuar una relación comercial real con nadie) — en su lugar,
+  todos los enlaces externos son a contenido educativo/informativo genuino
+  y ya público (noticias, definiciones, el sitio oficial de la SEC para
+  inversionistas), abriendo en pestaña nueva.
+
+### 18.9 Buzón de quejas y peticiones (soporte, con NIT)
+
+- Página nueva `support.html` (accesible desde el footer y el menú de
+  navegación): el usuario escribe una queja/petición/duda y recibe de
+  inmediato un número de referencia tipo NIT (6 dígitos,
+  `generateNit`/`createTicket` en `data/support.js`) para poder seguirla.
+- **A pedido explícito de Lucas: las respuestas son solo dentro de la
+  plataforma, nunca por correo real.** El panel de administrador tiene una
+  sección nueva "Buzón de soporte" (`GET`/`PUT /api/admin/support/:id/reply`)
+  donde Lucas ve todas las peticiones de todos los usuarios (abiertas
+  primero) y responde con texto libre — la respuesta se ve del lado del
+  cliente de inmediato la próxima vez que carga su historial (no pasa por
+  la demora de 1-2 min: esto no mueve saldo ni cantidades, es solo un
+  mensaje). El historial del usuario muestra cada petición con su NIT,
+  estado ("En proceso" / "Respondido") y la respuesta una vez que existe.
+
+### 18.10 Edición directa de usuarios desde el panel de administrador
+
+- Hasta ahora "Usuarios registrados" (sección 16.2) era una tabla de solo
+  lectura — Lucas solo podía editar montos a través de la cola de
+  aprobación de solicitudes que el cliente ya había pedido. A pedido
+  explícito de Lucas, ahora puede editar directamente el balance, equity y
+  apalancamiento de cualquier cuenta, y crear, editar o eliminar
+  posiciones (holdings) de cualquier usuario, sin que el cliente tenga que
+  pedir nada primero — con el botón "Editar" en cada fila de la tabla, que
+  despliega un panel con esas cuentas y posiciones.
+- **Misma demora de 1-2 minutos que el resto del sitio** (confirmado con
+  Lucas): el cambio no se aplica al instante, queda agendado
+  (`pendingAdminEdit` en `data/store.js` — mismo patrón que
+  `pendingAction`/`pendingPayload` de depósitos/retiros/operaciones, con
+  otro nombre para no confundirlo con "aprobar/rechazar una solicitud") y
+  se aplica solo cuando se cumple el plazo (`runDueAdminActions`, mismo
+  mecanismo perezoso de siempre). Mientras está pendiente, el cliente sigue
+  viendo el valor anterior — y el propio panel de administrador se lo deja
+  claro a Lucas con una nota "⏳ Cambio pendiente… aplica ~HH:MM" en vez de
+  dejarlo editar de nuevo encima.
+- Crear una posición nueva desde acá funciona igual: la posición existe
+  internamente desde el momento en que se crea, pero queda invisible para
+  el usuario (`getHoldingsByUser` la filtra) hasta que se aplica de verdad
+  — así nunca aparece "de la nada" con cantidad 0 mientras espera su turno.
+- Endpoints nuevos, todos protegidos por `requireAdmin` (mismo código de
+  administrador de siempre): `PUT /api/admin/accounts/:id/edit`,
+  `POST /api/admin/holdings`, `PUT /api/admin/holdings/:id/edit`,
+  `DELETE /api/admin/holdings/:id`. `GET /api/admin/users` ahora también
+  incluye `equity`/`leverage` por cuenta y la lista de posiciones de cada
+  usuario (antes solo traía `balance`), necesario para poder editarlos.
 
 ## Restricciones de seguridad (no negociables)
 

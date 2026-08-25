@@ -14,6 +14,8 @@ const {
   getHoldingsByUser,
   getInvestedProxyByUser,
   getRankForAmount,
+  getUserProfile,
+  setAutoInvestEnabled,
 } = require('../data/store');
 const { requireAuth } = require('../middleware/auth');
 
@@ -219,6 +221,49 @@ Con base en patrones típicos de gráficas exitosas (tendencia, momentum, soport
   } catch (err) {
     res.status(502).json({ error: 'No se pudo conectar con la API de OpenAI. Intenta de nuevo.' });
   }
+});
+
+// ---------------------------------------------------------------------
+// Auto-inversión REAL (solo Diamante y Platino) — a diferencia de la
+// Asesoría IA de arriba (que solo da recomendaciones para que el cliente
+// decida), esto es la automatización real: el motor de
+// data/store.js#runAutoInvestIfDue decide y genera operaciones de compra/
+// venta sobre Zenith (ZNT) por cuenta del cliente, sin que tenga que
+// confirmarlas una por una. Esas operaciones igual entran a la misma cola
+// de aprobación de administrador de siempre — Lucas conserva el control
+// final y aplica la misma demora de 1-2 minutos.
+// ---------------------------------------------------------------------
+
+// GET /api/ai/auto-invest -> si el cliente califica (Diamante+) y si tiene
+// la automatización activada o no.
+router.get('/auto-invest', (req, res) => {
+  const investedProxy = getInvestedProxyByUser(req.user.id);
+  const rank = getRankForAmount(investedProxy);
+  const qualifies = investedProxy >= ADVISORY_MIN_RANK_AMOUNT;
+  const user = getUserProfile(req.user.id);
+
+  res.json({
+    qualifies,
+    enabled: user ? user.autoInvestEnabled : true,
+    rank: rank?.key || null,
+  });
+});
+
+// PUT /api/ai/auto-invest { enabled: true|false } -> prende/apaga la
+// automatización para este cliente (solo si ya califica).
+router.put('/auto-invest', (req, res) => {
+  const investedProxy = getInvestedProxyByUser(req.user.id);
+  if (investedProxy < ADVISORY_MIN_RANK_AMOUNT) {
+    return res.status(403).json({
+      error: 'La auto-inversión está disponible desde la insignia Diamante en adelante.',
+    });
+  }
+
+  const enabled = Boolean(req.body.enabled);
+  const user = setAutoInvestEnabled(req.user.id, enabled);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+  res.json({ enabled: user.autoInvestEnabled });
 });
 
 module.exports = router;

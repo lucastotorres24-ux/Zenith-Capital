@@ -4,6 +4,7 @@
 // simple y suficiente para el tráfico de un proyecto de práctica.
 
 const { load, save } = require('./db');
+const { getCurrentSnapshot, getCandles } = require('./zenithCoin');
 
 // ---- Demora simulada de revisión manual (1-2 minutos) ----
 //
@@ -40,7 +41,7 @@ function computeApplyAt() {
 // ni el monto final que Lucas dejó editado. Las vistas del ADMIN
 // (getPendingDeposits, getAllUsersAdminView, etc.) no pasan por acá.
 function stripPendingInternals(record) {
-  const { pendingAction, pendingPayload, applyAt, adminDecidedAt, ...publicRecord } = record;
+  const { pendingAction, pendingPayload, applyAt, adminDecidedAt, pendingAdminEdit, ...publicRecord } = record;
   return publicRecord;
 }
 
@@ -64,6 +65,11 @@ function createUser({ username, passwordHash, fullName, email, phone, termsAccep
     address: null,
     termsAcceptedAt,
     createdAt: new Date().toISOString(),
+    // Automatización de inversión (Diamante/Platino): activada por
+    // defecto, pero la persona la puede apagar desde el panel de
+    // Asesoría IA una vez alcanza ese rango (ver routes/ai.js).
+    autoInvestEnabled: true,
+    lastAutoInvestAt: null,
   };
   db.users.push(user);
   save(db);
@@ -80,7 +86,19 @@ function publicUser(user) {
     phone: user.phone,
     birthDate: user.birthDate,
     address: user.address,
+    // `?? true` para que las cuentas creadas antes de este campo existir
+    // (como la demo semilla) sigan teniendo la automatización activada.
+    autoInvestEnabled: user.autoInvestEnabled ?? true,
   };
+}
+
+function setAutoInvestEnabled(userId, enabled) {
+  const db = load();
+  const user = db.users.find((u) => u.id === userId);
+  if (!user) return null;
+  user.autoInvestEnabled = Boolean(enabled);
+  save(db);
+  return publicUser(user);
 }
 
 function getUserProfile(userId) {
@@ -104,12 +122,17 @@ function updateUserProfile(userId, { phone, birthDate, address }) {
 
 function getAccountsByUser(userId) {
   const db = load();
-  return db.accounts.filter((a) => a.userId === userId);
+  // `stripPendingInternals` esconde `pendingAdminEdit` (una edición directa
+  // que Lucas dejó agendada desde el panel de administrador, ver "Edición
+  // directa de usuarios" más abajo) para que el balance/equity/leverage
+  // visible no cambie hasta que de verdad se aplique, 1-2 min después.
+  return db.accounts.filter((a) => a.userId === userId).map(stripPendingInternals);
 }
 
 function getAccountById(id, userId) {
   const db = load();
-  return db.accounts.find((a) => a.id === id && a.userId === userId) || null;
+  const account = db.accounts.find((a) => a.id === id && a.userId === userId);
+  return account ? stripPendingInternals(account) : null;
 }
 
 function createAccount({ userId, accountNumber, accountType, currency, balance, equity, leverage }) {
@@ -136,7 +159,7 @@ function updateAccount(id, userId, fields) {
   if (!account) return null;
   Object.assign(account, fields);
   save(db);
-  return account;
+  return stripPendingInternals(account);
 }
 
 function deleteAccount(id, userId) {
@@ -373,7 +396,13 @@ function finalizeWithdrawalAction(db, withdrawal) {
 
 function getHoldingsByUser(userId) {
   const db = load();
-  return db.holdings.filter((h) => h.userId === userId);
+  // Una posición que Lucas acaba de crear desde el panel de administrador
+  // (pendingAdminEdit.type === 'create') todavía no existe de verdad para
+  // el usuario — se esconde por completo hasta que se aplique, para que no
+  // aparezca "de la nada" con cantidad 0 mientras espera su turno.
+  return db.holdings
+    .filter((h) => h.userId === userId && h.pendingAdminEdit?.type !== 'create')
+    .map(stripPendingInternals);
 }
 
 function getTradesByUser(userId) {
@@ -392,7 +421,7 @@ function getPendingTrades() {
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
 
-function createPendingTrade({ userId, accountId, asset, symbol, side, quantity, price }) {
+function createPendingTrade({ userId, accountId, asset, symbol, side, quantity, price, source = 'manual' }) {
   const db = load();
   const account = db.accounts.find((a) => a.id === accountId && a.userId === userId);
   if (!account) return { error: 'Cuenta no encontrada' };
@@ -410,6 +439,12 @@ function createPendingTrade({ userId, accountId, asset, symbol, side, quantity, 
     requestedPrice: price,
     total: Number((quantity * price).toFixed(2)),
     status: 'pendiente', // 'pendiente' | 'aprobada' | 'rechazada'
+    // 'manual' = la persona la pidió desde el panel de trading; 'auto' =
+    // la generó el motor de auto-inversión de Diamante/Platino (ver
+    // runAutoInvestIfDue más abajo). Sirve solo para que el panel de
+    // administrador pueda mostrar de dónde salió cada operación — el
+    // resto del flujo de aprobación es exactamente el mismo para ambas.
+    source,
     createdAt: new Date().toISOString(),
     resolvedAt: null,
   };
@@ -541,6 +576,176 @@ function finalizeTradeAction(db, trade) {
   trade.applied = true;
 }
 
+// ---- Edición directa de usuarios desde el panel de administrador ----
+//
+// A pedido de Lucas: además de aprobar/rechazar solicitudes que el cliente
+// ya pidió, el panel de administrador ahora puede editar directamente el
+// balance/equity/leverage de una cuenta, o crear/editar/eliminar una
+// posición (holding) de cualquier usuario — sin que el cliente tenga que
+// pedir nada primero. Sigue el mismo criterio que el resto del sitio (Q2
+// del pedido original): el cambio NO se ve al instante, tarda la misma
+// demora simulada de 1-2 minutos en aplicarse de verdad
+// (`pendingAdminEdit` + `runDueAdminActions`, mismo patrón que
+// pendingAction/pendingPayload de depósitos/retiros/operaciones, con otro
+// nombre para no confundirlo con "aprobar/rechazar una solicitud").
+//
+// Antes esta vista era intencionalmente de solo lectura (ver nota vieja en
+// getAllUsersAdminView) — se habilita ahora a pedido explícito de Lucas.
+function requestAccountEdit({ id, fields }) {
+  const db = load();
+  const account = db.accounts.find((a) => a.id === id);
+  if (!account) return { error: 'Cuenta no encontrada' };
+  if (account.pendingAdminEdit) {
+    return { error: 'Esta cuenta ya tiene una edición pendiente de aplicarse — espera a que termine.' };
+  }
+
+  const nextFields = {};
+  if (fields.balance !== undefined) {
+    if (!Number.isFinite(fields.balance) || fields.balance < 0) {
+      return { error: 'El balance debe ser un número mayor o igual a 0' };
+    }
+    nextFields.balance = Number(fields.balance.toFixed(2));
+  }
+  if (fields.equity !== undefined) {
+    if (!Number.isFinite(fields.equity) || fields.equity < 0) {
+      return { error: 'El equity debe ser un número mayor o igual a 0' };
+    }
+    nextFields.equity = Number(fields.equity.toFixed(2));
+  }
+  if (fields.leverage !== undefined) {
+    if (!fields.leverage || typeof fields.leverage !== 'string') {
+      return { error: 'El apalancamiento no es válido' };
+    }
+    nextFields.leverage = fields.leverage;
+  }
+  if (!Object.keys(nextFields).length) {
+    return { error: 'No hay ningún cambio para aplicar' };
+  }
+
+  account.pendingAdminEdit = {
+    type: 'edit',
+    fields: nextFields,
+    applyAt: computeApplyAt(),
+    decidedAt: new Date().toISOString(),
+  };
+  save(db);
+  return { account };
+}
+
+function requestHoldingEdit({ id, fields }) {
+  const db = load();
+  const holding = db.holdings.find((h) => h.id === id);
+  if (!holding) return { error: 'Posición no encontrada' };
+  if (holding.pendingAdminEdit) {
+    return { error: 'Esta posición ya tiene una edición pendiente de aplicarse — espera a que termine.' };
+  }
+
+  const nextFields = {};
+  if (fields.quantity !== undefined) {
+    if (!Number.isFinite(fields.quantity) || fields.quantity <= 0) {
+      return { error: 'La cantidad debe ser un número mayor a 0' };
+    }
+    nextFields.quantity = fields.quantity;
+  }
+  if (fields.avgPrice !== undefined) {
+    if (!Number.isFinite(fields.avgPrice) || fields.avgPrice <= 0) {
+      return { error: 'El precio promedio debe ser un número mayor a 0' };
+    }
+    nextFields.avgPrice = fields.avgPrice;
+  }
+  if (!Object.keys(nextFields).length) {
+    return { error: 'No hay ningún cambio para aplicar' };
+  }
+
+  holding.pendingAdminEdit = {
+    type: 'edit',
+    fields: nextFields,
+    applyAt: computeApplyAt(),
+    decidedAt: new Date().toISOString(),
+  };
+  save(db);
+  return { holding };
+}
+
+// Crea una posición nueva para un usuario — queda invisible para él
+// (ver getHoldingsByUser) hasta que se aplique de verdad.
+function requestHoldingCreate({ userId, accountId, asset, symbol, quantity, avgPrice }) {
+  const db = load();
+  const account = db.accounts.find((a) => a.id === accountId && a.userId === userId);
+  if (!account) return { error: 'Cuenta no encontrada para este usuario' };
+  if (!asset || !symbol) return { error: 'Selecciona un activo válido' };
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return { error: 'La cantidad debe ser un número mayor a 0' };
+  }
+  if (!Number.isFinite(avgPrice) || avgPrice <= 0) {
+    return { error: 'El precio promedio debe ser un número mayor a 0' };
+  }
+  const existing = db.holdings.find(
+    (h) => h.userId === userId && h.accountId === accountId && h.asset === asset && !h.pendingAdminEdit
+  );
+  if (existing) {
+    return { error: 'Este usuario ya tiene una posición de este activo en esa cuenta — edítala en vez de crear otra.' };
+  }
+
+  const holding = {
+    id: db.nextHoldingId++,
+    userId,
+    accountId,
+    asset,
+    symbol,
+    quantity: 0,
+    avgPrice: 0,
+    createdAt: new Date().toISOString(),
+    pendingAdminEdit: {
+      type: 'create',
+      fields: { quantity, avgPrice },
+      applyAt: computeApplyAt(),
+      decidedAt: new Date().toISOString(),
+    },
+  };
+  db.holdings.push(holding);
+  save(db);
+  return { holding };
+}
+
+function requestHoldingDelete({ id }) {
+  const db = load();
+  const holding = db.holdings.find((h) => h.id === id);
+  if (!holding) return { error: 'Posición no encontrada' };
+  if (holding.pendingAdminEdit) {
+    return { error: 'Esta posición ya tiene una edición pendiente de aplicarse — espera a que termine.' };
+  }
+
+  holding.pendingAdminEdit = {
+    type: 'delete',
+    fields: {},
+    applyAt: computeApplyAt(),
+    decidedAt: new Date().toISOString(),
+  };
+  save(db);
+  return { holding };
+}
+
+function finalizeAccountEdit(db, account) {
+  const { type, fields } = account.pendingAdminEdit;
+  if (type === 'edit') {
+    Object.assign(account, fields);
+  }
+  delete account.pendingAdminEdit;
+}
+
+function finalizeHoldingEdit(db, holding) {
+  const { type, fields } = holding.pendingAdminEdit;
+  if (type === 'delete') {
+    db.holdings = db.holdings.filter((h) => h.id !== holding.id);
+    return;
+  }
+  if (type === 'create' || type === 'edit') {
+    Object.assign(holding, fields);
+  }
+  delete holding.pendingAdminEdit;
+}
+
 // Revisa los tres tipos de solicitud (depósitos, retiros, operaciones) y
 // aplica de verdad cualquiera cuyo plazo de espera ya se haya cumplido.
 // Se llama en cada request (ver server.js) en vez de con un setTimeout,
@@ -568,8 +773,143 @@ function runDueAdminActions() {
       changed = true;
     }
   });
+  db.accounts.forEach((a) => {
+    if (a.pendingAdminEdit && new Date(a.pendingAdminEdit.applyAt).getTime() <= now) {
+      finalizeAccountEdit(db, a);
+      changed = true;
+    }
+  });
+  // De atrás para adelante porque finalizeHoldingEdit puede eliminar el
+  // elemento del array (tipo 'delete') — recorrer de adelante hacia atrás
+  // mientras se borran elementos se saltaría el siguiente.
+  for (let i = db.holdings.length - 1; i >= 0; i--) {
+    const h = db.holdings[i];
+    if (h.pendingAdminEdit && new Date(h.pendingAdminEdit.applyAt).getTime() <= now) {
+      finalizeHoldingEdit(db, h);
+      changed = true;
+    }
+  }
 
   if (changed) save(db);
+}
+
+// ---- Auto-inversión real (Diamante/Platino) ----
+//
+// Cada cierto tiempo (AUTO_INVEST_INTERVAL_MS), revisa a cada cliente que
+// ya alcanzó el rango Diamante o Platino (mismo cálculo que las Insignias
+// Zenith, ver getInvestedProxyByUser/getRankForAmount) y decide si abrir
+// una pequeña operación de compra o venta sobre Zenith (ZNT) — la única
+// moneda de la que este servidor conoce el precio real en vivo (las demás
+// cripto las trae el navegador directo de CoinGecko, sin pasar nunca por
+// el backend, así que no hay forma confiable de operarlas por cuenta
+// propia desde acá). La decisión es simple a propósito: sigue la
+// variación de las últimas 24h de ZNT — si viene subiendo, intenta
+// comprar un poco más; si viene bajando, intenta vender parte de lo que
+// el cliente ya tiene.
+//
+// Importante: la operación que genera entra a la MISMA cola de
+// aprobación de administrador que cualquier compra/venta manual
+// (createPendingTrade) — Lucas conserva el control final y se aplica la
+// misma demora de 1-2 minutos de siempre. Lo único que cambia es que el
+// cliente ya no tiene que decidir ni confirmar la operación él mismo.
+//
+// Se revisa "perezosamente" en cada request (mismo patrón que
+// runDueAdminActions, los mensajes de Comunidad Zenith y las velas de
+// ZNT) en vez de con un temporizador de fondo, para que sobreviva si el
+// servidor se reinicia o se duerme un rato (plan gratuito de Render).
+const AUTO_INVEST_INTERVAL_MS = 12 * 60 * 1000; // evalúa a cada cliente cada ~12 minutos
+const AUTO_INVEST_TIER_KEYS = ['diamante', 'platino'];
+const AUTO_INVEST_ASSET = 'zenith';
+const AUTO_INVEST_SYMBOL = 'ZNT';
+const AUTO_INVEST_MAX_PCT = 0.05; // nunca arriesga más del 5% del balance/posición por operación
+const AUTO_INVEST_MIN_USD = 10; // por debajo de esto no vale la pena generar la operación
+const AUTO_INVEST_TREND_THRESHOLD = 0.2; // % mínimo de variación 24h para actuar
+
+function runAutoInvestIfDue() {
+  const now = Date.now();
+  const snapshot = getCurrentSnapshot();
+  if (!snapshot) return; // ZNT todavía no generó velas (servidor recién arrancado)
+
+  // Paso 1 (solo lectura): decide qué le tocaría a cada cliente elegible,
+  // sin escribir nada todavía.
+  const readDb = load();
+  const decisions = [];
+
+  readDb.users.forEach((u) => {
+    const enabled = u.autoInvestEnabled ?? true;
+    if (!enabled) return;
+
+    const dueAgain =
+      !u.lastAutoInvestAt || now - new Date(u.lastAutoInvestAt).getTime() >= AUTO_INVEST_INTERVAL_MS;
+    if (!dueAgain) return;
+
+    const investedProxy = getInvestedProxyByUser(u.id);
+    const rank = getRankForAmount(investedProxy);
+    if (!rank || !AUTO_INVEST_TIER_KEYS.includes(rank.key)) return;
+
+    const account = readDb.accounts
+      .filter((a) => a.userId === u.id)
+      .sort((a, b) => b.balance - a.balance)[0];
+
+    let action = null;
+    if (account) {
+      const trendUp = snapshot.change24h >= AUTO_INVEST_TREND_THRESHOLD;
+      const trendDown = snapshot.change24h <= -AUTO_INVEST_TREND_THRESHOLD;
+
+      if (trendUp) {
+        const amount = Math.min(account.balance * AUTO_INVEST_MAX_PCT, account.balance);
+        const quantity = Number((amount / snapshot.price).toFixed(6));
+        if (amount >= AUTO_INVEST_MIN_USD && quantity > 0) {
+          action = { accountId: account.id, side: 'compra', quantity, price: snapshot.price };
+        }
+      } else if (trendDown) {
+        const holding = readDb.holdings.find(
+          (h) => h.accountId === account.id && h.userId === u.id && h.asset === AUTO_INVEST_ASSET
+        );
+        if (holding && holding.quantity > 0) {
+          const quantity = Number((holding.quantity * AUTO_INVEST_MAX_PCT).toFixed(6));
+          const amount = quantity * snapshot.price;
+          if (amount >= AUTO_INVEST_MIN_USD && quantity > 0) {
+            action = { accountId: account.id, side: 'venta', quantity, price: snapshot.price };
+          }
+        }
+      }
+    }
+
+    decisions.push({ userId: u.id, action });
+  });
+
+  if (!decisions.length) return;
+
+  // Paso 2: crea la operación pendiente de cada decisión. Cada llamada
+  // hace su propio load/save fresco (igual que si la hubiera pedido la
+  // persona a mano desde el panel de trading), así que es seguro
+  // encadenarlas sin pisarse entre sí ni con lo que se leyó en el paso 1.
+  decisions.forEach(({ userId, action }) => {
+    if (!action) return;
+    createPendingTrade({
+      userId,
+      accountId: action.accountId,
+      asset: AUTO_INVEST_ASSET,
+      symbol: AUTO_INVEST_SYMBOL,
+      side: action.side,
+      quantity: action.quantity,
+      price: action.price,
+      source: 'auto',
+    });
+  });
+
+  // Paso 3: en una sola lectura/escritura fresca al final (después de que
+  // ya se guardaron todas las operaciones nuevas), marca a todos los
+  // clientes evaluados como "revisados ahora" -- haya generado o no una
+  // operación -- para no volver a evaluarlos hasta el próximo intervalo.
+  const writeDb = load();
+  const nowIso = new Date().toISOString();
+  decisions.forEach(({ userId }) => {
+    const u = writeDb.users.find((x) => x.id === userId);
+    if (u) u.lastAutoInvestAt = nowIso;
+  });
+  save(writeDb);
 }
 
 // ---- Opciones Sube/Baja (panel estilo IQ Option) ----
@@ -761,14 +1101,15 @@ function getRankForAmount(amount) {
 
 // ---- Panel de "Usuarios registrados" (admin.html) ----
 //
-// Vista de solo lectura para Lucas: cada usuario que se registra aparece
-// acá con su perfil completo, sus cuentas/balances, su insignia
-// (aproximada, con el mismo cálculo de getInvestedProxyByUser — puede no
-// coincidir centavo a centavo con lo que ve el usuario, que usa precio en
-// vivo) y cuántos documentos tiene subidos. A propósito NO permite editar
-// datos personales del usuario desde acá — lo único editable desde el
-// panel de administrador son los montos/cantidades de las solicitudes
-// pendientes (ver "Aprobación manual" en PRODUCT_SPEC.md).
+// Cada usuario que se registra aparece acá con su perfil completo, sus
+// cuentas/balances/posiciones, su insignia (aproximada, con el mismo
+// cálculo de getInvestedProxyByUser — puede no coincidir centavo a
+// centavo con lo que ve el usuario, que usa precio en vivo) y cuántos
+// documentos tiene subidos. A pedido explícito de Lucas, esta vista SÍ
+// incluye lo necesario para editar directamente el balance/equity/
+// leverage de una cuenta y crear/editar/eliminar posiciones (ver
+// "Edición directa de usuarios" más arriba) — antes era de solo lectura,
+// eso cambió en esta ronda de features.
 function getAllUsersAdminView() {
   const db = load();
   return db.users
@@ -781,6 +1122,20 @@ function getAllUsersAdminView() {
           accountType: a.accountType,
           currency: a.currency,
           balance: a.balance,
+          equity: a.equity,
+          leverage: a.leverage,
+          pendingAdminEdit: a.pendingAdminEdit || null,
+        }));
+      const holdings = db.holdings
+        .filter((h) => h.userId === u.id)
+        .map((h) => ({
+          id: h.id,
+          accountId: h.accountId,
+          asset: h.asset,
+          symbol: h.symbol,
+          quantity: h.quantity,
+          avgPrice: h.avgPrice,
+          pendingAdminEdit: h.pendingAdminEdit || null,
         }));
       const documentsCount = db.documents.filter((d) => d.userId === u.id).length;
       const investedProxy = getInvestedProxyByUser(u.id);
@@ -795,6 +1150,7 @@ function getAllUsersAdminView() {
         address: u.address,
         createdAt: u.createdAt || u.termsAcceptedAt || null,
         accounts,
+        holdings,
         documentsCount,
         investedProxy,
         rank: rank ? { key: rank.key, label: rank.label } : null,
@@ -844,4 +1200,10 @@ module.exports = {
   RANK_TIERS,
   runDueAdminActions,
   getAllUsersAdminView,
+  setAutoInvestEnabled,
+  runAutoInvestIfDue,
+  requestAccountEdit,
+  requestHoldingEdit,
+  requestHoldingCreate,
+  requestHoldingDelete,
 };
