@@ -8,6 +8,11 @@ const aiRoutes = require('./routes/ai');
 const depositsRoutes = require('./routes/deposits');
 const withdrawalsRoutes = require('./routes/withdrawals');
 const tradingRoutes = require('./routes/trading');
+const accessRoutes = require('./routes/access');
+const adminRoutes = require('./routes/admin');
+const documentsRoutes = require('./routes/documents');
+const communityRoutes = require('./routes/community');
+const { requireSiteAccess } = require('./middleware/siteAccess');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -29,12 +34,25 @@ if (
 app.set('trust proxy', 1);
 
 app.use(cors()); // permite que tu frontend (en otro puerto/dominio) haga peticiones aquí
-app.use(express.json());
+// Límite subido de 100kb (por defecto) a 15mb: los PDFs que la gente sube
+// desde su perfil viajan como base64 dentro del JSON, y eso pesa más que
+// el archivo original.
+app.use(express.json({ limit: '15mb' }));
 
 // Ruta de salud, útil para probar que el servidor está vivo
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
+
+// /api/access queda antes del bloqueo de sitio a propósito: es la ruta que
+// lo verifica, así que no puede exigirlo ella misma (ver routes/access.js).
+app.use('/api/access', accessRoutes);
+
+// A partir de aquí, si SITE_ACCESS_CODE está configurado en el servidor,
+// toda petición necesita el token de acceso del sitio (ver
+// middleware/siteAccess.js). Si no está configurado, este middleware no
+// hace nada y el sitio funciona igual que antes.
+app.use(requireSiteAccess);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountsRoutes);
@@ -42,6 +60,9 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/deposits', depositsRoutes);
 app.use('/api/withdrawals', withdrawalsRoutes);
 app.use('/api/trading', tradingRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/documents', documentsRoutes);
+app.use('/api/community', communityRoutes);
 
 // Manejo simple de rutas no encontradas
 app.use((req, res) => {

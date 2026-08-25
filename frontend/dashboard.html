@@ -9,6 +9,27 @@
 </head>
 <body>
 
+<div class="site-gate is-active" id="site-gate">
+  <div class="site-gate-card">
+    <div class="site-gate-brand">
+      <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+      <span>Zenith Capital</span>
+    </div>
+    <p class="site-gate-status" id="site-gate-status">Verificando acceso…</p>
+    <form id="site-gate-form" class="site-gate-form" style="display:none;" novalidate>
+      <div class="field">
+        <label for="site-gate-input">Código de acceso</label>
+        <input id="site-gate-input" type="password" autocomplete="off" placeholder="••••••" />
+      </div>
+      <div class="form-error" id="site-gate-error">
+        <span>⚠</span>
+        <span id="site-gate-error-text">Código incorrecto.</span>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="site-gate-submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
 <header class="topbar">
   <div class="brand">
     <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
@@ -20,13 +41,13 @@
         <span class="user-avatar" id="user-initial">U</span>
         <div class="user-chip-text">
           <span id="user-name">—</span>
-          <span class="investor-badge">★ Zenith Investor</span>
+          <span class="investor-badge" id="rank-badge">★ Zenith Investor</span>
         </div>
         <span class="user-menu-caret">▾</span>
       </button>
       <div class="user-menu-dropdown" id="user-menu-dropdown">
-        <button class="user-menu-item" id="open-change-password" type="button">
-          <span class="user-menu-item-icon">🔒</span> Cambiar contraseña
+        <button class="user-menu-item" id="open-profile-modal" type="button">
+          <span class="user-menu-item-icon">👤</span> Mi perfil
         </button>
         <button class="user-menu-item user-menu-item-danger" id="logout-btn" type="button">
           <span class="user-menu-item-icon">↪</span> Cerrar sesión
@@ -58,6 +79,16 @@
       <p class="subtitle">Opera Sube / Baja en tiempo reducido, con gráfico de velas y datos reales del mercado.</p>
     </div>
     <a class="btn btn-primary btn-lg" href="trading-panel.html">📊 Abrir panel de trading</a>
+  </section>
+
+  <!-- Banner de la Comunidad Zenith -->
+  <section class="trading-cta trading-cta-community">
+    <div class="trading-cta-text">
+      <span class="trading-cta-tag">Comunidad</span>
+      <h2>Comunidad Zenith</h2>
+      <p class="subtitle">Conversa (de forma simulada) con otros clientes certificados Zenith de todos los rangos.</p>
+    </div>
+    <a class="btn btn-secondary btn-lg" href="community.html">💬 Ver comunidad</a>
   </section>
 
   <!-- Stat tiles -->
@@ -112,6 +143,39 @@
       <div class="form-error ai-error" id="ai-error">
         <span>⚠</span>
         <span id="ai-error-text"></span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Asesoría IA avanzada — solo visible desde el rango Diamante -->
+  <section class="section" id="advisory-section" style="display:none;">
+    <div class="section-header">
+      <div>
+        <h2>Asesoría IA · Diamante y Platino</h2>
+        <div class="subtitle">Sugerencias para considerar en tus próximas operaciones — vos decides, y toda operación sigue pasando por revisión.</div>
+      </div>
+      <span class="badge-pill" id="advisory-rank-pill">Diamante</span>
+    </div>
+    <div class="section-body">
+
+      <div class="empty-state" id="advisory-empty">
+        <div class="icon">🧠</div>
+        <div>Pide una asesoría con base en tus posiciones y el mercado actual.</div>
+        <button class="btn btn-primary ai-generate-btn" id="advisory-generate-btn">Pedir asesoría</button>
+      </div>
+
+      <div class="ai-result" id="advisory-result" style="display:none;">
+        <p class="ai-result-text" id="advisory-result-text"></p>
+        <div class="ai-result-footer">
+          <span class="ai-result-meta" id="advisory-result-meta"></span>
+          <button class="btn btn-secondary btn-sm" id="advisory-regenerate-btn">Regenerar</button>
+        </div>
+      </div>
+
+      <div class="form-error ai-error" id="advisory-error">
+        <span>⚠</span>
+        <span id="advisory-error-text"></span>
       </div>
 
     </div>
@@ -223,6 +287,38 @@
       <div class="empty-state" id="holdings-empty" style="display:none;">
         <div class="icon">📈</div>
         <div>Todavía no tienes posiciones abiertas. Compra un activo desde "Mercado cripto" abajo.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Historial de operaciones -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Historial de operaciones</h2>
+        <div class="subtitle">Tus compras y ventas — quedan "pendiente" hasta que se revisan; el monto final puede ajustarse al aprobar.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <table class="ticker-table" id="trades-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Activo</th>
+            <th style="text-align:right; padding-right:12px;">Cantidad</th>
+            <th style="text-align:right; padding-right:12px;">Precio</th>
+            <th style="text-align:right; padding-right:12px;">Total</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body">
+          <!-- se llena por JS -->
+        </tbody>
+      </table>
+      <div class="empty-state" id="trades-empty" style="display:none;">
+        <div class="icon">🧾</div>
+        <div>Todavía no has realizado ninguna compra o venta.</div>
       </div>
     </div>
   </section>
@@ -476,48 +572,168 @@
   </div>
 </div>
 
-<!-- Modal cambiar contraseña -->
-<div class="modal-overlay" id="password-modal">
-  <div class="modal">
+<!-- Modal "Detalles" de una posición: inversión inicial vs actual -->
+<div class="modal-overlay" id="holding-detail-modal">
+  <div class="modal modal-wide">
     <div class="modal-header">
-      <h3>Cambiar contraseña</h3>
-      <button class="modal-close" id="password-modal-close" aria-label="Cerrar">✕</button>
+      <h3 id="holding-detail-title">Detalles de la posición</h3>
+      <button class="modal-close" id="holding-detail-close" aria-label="Cerrar">✕</button>
     </div>
 
-    <div id="password-modal-error" class="form-error">
-      <span>⚠</span>
-      <span id="password-modal-error-text"></span>
-    </div>
-    <div id="password-modal-success" class="form-success">
-      <span>✓</span>
-      <span id="password-modal-success-text"></span>
+    <div class="holding-detail-grid">
+      <div class="holding-detail-metric">
+        <div class="label">Cantidad</div>
+        <div class="value" id="holding-detail-quantity">—</div>
+      </div>
+      <div class="holding-detail-metric">
+        <div class="label">Precio de compra</div>
+        <div class="value" id="holding-detail-avgprice">—</div>
+      </div>
+      <div class="holding-detail-metric">
+        <div class="label">Precio actual</div>
+        <div class="value" id="holding-detail-currentprice">—</div>
+      </div>
+      <div class="holding-detail-metric">
+        <div class="label">Inversión inicial</div>
+        <div class="value" id="holding-detail-initial">—</div>
+      </div>
+      <div class="holding-detail-metric">
+        <div class="label">Valor actual</div>
+        <div class="value" id="holding-detail-current">—</div>
+      </div>
+      <div class="holding-detail-metric">
+        <div class="label">Ganancia / pérdida</div>
+        <div class="value" id="holding-detail-pl">—</div>
+      </div>
     </div>
 
-    <form id="password-form">
-      <div class="field">
-        <label for="password-current">Contraseña actual</label>
-        <input id="password-current" type="password" required />
+    <h4 class="holding-detail-history-title">Historial de esta moneda</h4>
+    <table class="ticker-table" id="holding-detail-history-table">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Tipo</th>
+          <th style="text-align:right; padding-right:12px;">Cantidad</th>
+          <th style="text-align:right; padding-right:12px;">Precio</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="holding-detail-history-body"></tbody>
+    </table>
+    <div class="empty-state" id="holding-detail-history-empty" style="display:none;">
+      <div>Sin operaciones registradas todavía para este activo.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal "Mi perfil": datos personales, documentos y contraseña -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Mi perfil</h3>
+      <button class="modal-close" id="profile-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="profile-summary">
+      <span class="user-avatar" id="profile-avatar">U</span>
+      <div>
+        <div class="profile-fullname" id="profile-fullname">—</div>
+        <div class="profile-email" id="profile-email">—</div>
       </div>
-      <div class="field">
-        <label for="password-new">Nueva contraseña</label>
-        <input id="password-new" type="password" minlength="8" required />
+    </div>
+
+    <div class="tabs profile-tabs" role="tablist">
+      <button class="tab-btn is-active" type="button" data-profile-tab="datos">Datos personales</button>
+      <button class="tab-btn" type="button" data-profile-tab="documentos">Documentos</button>
+      <button class="tab-btn" type="button" data-profile-tab="password">Contraseña</button>
+    </div>
+
+    <!-- Datos personales -->
+    <div class="profile-tab-panel is-active" data-profile-panel="datos">
+      <div id="profile-data-error" class="form-error">
+        <span>⚠</span>
+        <span id="profile-data-error-text"></span>
       </div>
-      <div class="field">
-        <label for="password-confirm">Confirmar nueva contraseña</label>
-        <input id="password-confirm" type="password" minlength="8" required />
+      <div id="profile-data-success" class="form-success">
+        <span>✓</span>
+        <span id="profile-data-success-text"></span>
+      </div>
+      <form id="profile-data-form">
+        <div class="field-row">
+          <div class="field">
+            <label for="profile-phone">Teléfono</label>
+            <input id="profile-phone" type="tel" />
+          </div>
+          <div class="field">
+            <label for="profile-birthdate">Fecha de nacimiento</label>
+            <input id="profile-birthdate" type="date" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="profile-address">Dirección de vivienda</label>
+          <input id="profile-address" type="text" placeholder="Calle, número, ciudad" />
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="profile-data-submit">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Documentos -->
+    <div class="profile-tab-panel" data-profile-panel="documentos">
+      <p class="subtitle" style="margin-bottom:14px;">Adjunta PDFs cuando Zenith te pida algún documento (identificación, comprobantes, etc.). Máximo 10 MB por archivo.</p>
+      <div id="profile-docs-error" class="form-error">
+        <span>⚠</span>
+        <span id="profile-docs-error-text"></span>
+      </div>
+      <div class="document-upload-row">
+        <input type="file" id="profile-doc-input" accept="application/pdf" />
+        <button type="button" class="btn btn-secondary btn-sm" id="profile-doc-upload-btn">Subir PDF</button>
+      </div>
+      <div class="empty-state" id="profile-docs-empty" style="display:none;">
+        <div class="icon">📄</div>
+        <div>Todavía no has subido ningún documento.</div>
+      </div>
+      <div id="profile-docs-list" class="document-list"></div>
+    </div>
+
+    <!-- Contraseña -->
+    <div class="profile-tab-panel" data-profile-panel="password">
+      <div id="password-modal-error" class="form-error">
+        <span>⚠</span>
+        <span id="password-modal-error-text"></span>
+      </div>
+      <div id="password-modal-success" class="form-success">
+        <span>✓</span>
+        <span id="password-modal-success-text"></span>
       </div>
 
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" id="password-modal-cancel">Cancelar</button>
-        <button type="submit" class="btn btn-primary" id="password-modal-submit">Actualizar</button>
-      </div>
-    </form>
+      <form id="password-form">
+        <div class="field">
+          <label for="password-current">Contraseña actual</label>
+          <input id="password-current" type="password" required />
+        </div>
+        <div class="field">
+          <label for="password-new">Nueva contraseña</label>
+          <input id="password-new" type="password" minlength="8" required />
+        </div>
+        <div class="field">
+          <label for="password-confirm">Confirmar nueva contraseña</label>
+          <input id="password-confirm" type="password" minlength="8" required />
+        </div>
+
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="password-modal-submit">Actualizar</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
 <div class="toast-stack" id="toast-stack"></div>
 
 <script src="assets/js/config.js"></script>
+<script src="assets/js/site-gate.js"></script>
 <script src="assets/js/api.js"></script>
 <script src="assets/js/dashboard.js"></script>
 </body>

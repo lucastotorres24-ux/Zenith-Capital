@@ -3,6 +3,19 @@
 
 const TOKEN_KEY = 'zenith_token';
 const USER_KEY = 'zenith_user';
+const SITE_ACCESS_KEY = 'zenith_site_access';
+const ADMIN_TOKEN_KEY = 'zenith_admin_token';
+
+function triggerBlobDownload(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename || 'documento.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
 
 const Api = {
   getToken() {
@@ -27,11 +40,79 @@ const Api = {
     return Boolean(this.getToken());
   },
 
-  async request(path, { method = 'GET', body, auth = true } = {}) {
+  // ---- Código de acceso del sitio (bloqueo general, ver site-gate.js) ----
+  getSiteAccessToken() {
+    return localStorage.getItem(SITE_ACCESS_KEY);
+  },
+  setSiteAccessToken(token) {
+    if (token) localStorage.setItem(SITE_ACCESS_KEY, token);
+  },
+  clearSiteAccessToken() {
+    localStorage.removeItem(SITE_ACCESS_KEY);
+  },
+  verifySiteAccess(code) {
+    return this.request('/api/access/verify', { method: 'POST', body: { code }, auth: false, site: false });
+  },
+  checkSiteAccess() {
+    return this.request('/api/access/check', { auth: false });
+  },
+
+  // ---- Token del panel de administrador (admin.html) ----
+  getAdminToken() {
+    return localStorage.getItem(ADMIN_TOKEN_KEY);
+  },
+  setAdminToken(token) {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  },
+  clearAdminToken() {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+  },
+  adminVerify(code) {
+    return this.request('/api/admin/verify', { method: 'POST', body: { code }, auth: false });
+  },
+
+  // ---- Cola de aprobación (panel de administrador) ----
+  adminGetPending() {
+    return this.request('/api/admin/pending', { admin: true });
+  },
+  adminGetUserAccounts(userId) {
+    return this.request(`/api/admin/users/${userId}/accounts`, { admin: true });
+  },
+  adminGetDocuments() {
+    return this.request('/api/admin/documents', { admin: true });
+  },
+  adminApproveDeposit(id, payload) {
+    return this.request(`/api/admin/deposits/${id}/approve`, { method: 'PUT', body: payload, admin: true });
+  },
+  adminRejectDeposit(id) {
+    return this.request(`/api/admin/deposits/${id}/reject`, { method: 'PUT', admin: true });
+  },
+  adminApproveWithdrawal(id, payload) {
+    return this.request(`/api/admin/withdrawals/${id}/approve`, { method: 'PUT', body: payload, admin: true });
+  },
+  adminRejectWithdrawal(id) {
+    return this.request(`/api/admin/withdrawals/${id}/reject`, { method: 'PUT', admin: true });
+  },
+  adminApproveTrade(id, payload) {
+    return this.request(`/api/admin/trades/${id}/approve`, { method: 'PUT', body: payload, admin: true });
+  },
+  adminRejectTrade(id) {
+    return this.request(`/api/admin/trades/${id}/reject`, { method: 'PUT', admin: true });
+  },
+
+  async request(path, { method = 'GET', body, auth = true, site = true, admin = false } = {}) {
     const headers = { 'Content-Type': 'application/json' };
     if (auth) {
       const token = this.getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    if (site) {
+      const siteToken = this.getSiteAccessToken();
+      if (siteToken) headers['X-Site-Access'] = siteToken;
+    }
+    if (admin) {
+      const adminToken = this.getAdminToken();
+      if (adminToken) headers['X-Admin-Token'] = adminToken;
     }
 
     let res;
@@ -55,6 +136,15 @@ const Api = {
       // Token vencido o inválido: cierra sesión localmente.
       this.clearSession();
     }
+    if (res.status === 403 && site && path !== '/api/access/verify') {
+      // El código de acceso del sitio guardado ya no es válido: se borra
+      // para que site-gate.js vuelva a pedirlo.
+      this.clearSiteAccessToken();
+      window.dispatchEvent(new CustomEvent('zenith:site-access-revoked'));
+    }
+    if (res.status === 403 && admin) {
+      this.clearAdminToken();
+    }
 
     if (!res.ok) {
       throw new Error(data.error || `Error ${res.status}`);
@@ -71,10 +161,10 @@ const Api = {
     });
   },
 
-  register(username, password) {
+  register(payload) {
     return this.request('/api/auth/register', {
       method: 'POST',
-      body: { username, password },
+      body: payload,
       auth: false,
     });
   },
@@ -127,8 +217,66 @@ const Api = {
     return this.request('/api/trading/sell', { method: 'POST', body: payload });
   },
 
+  getTrades() {
+    return this.request('/api/trading/trades');
+  },
+
   changePassword(payload) {
     return this.request('/api/auth/change-password', { method: 'POST', body: payload });
+  },
+
+  // ---- Perfil ----
+  getMe() {
+    return this.request('/api/auth/me');
+  },
+  updateProfile(payload) {
+    return this.request('/api/auth/profile', { method: 'PUT', body: payload });
+  },
+
+  // ---- Documentos (PDFs) ----
+  getDocuments() {
+    return this.request('/api/documents');
+  },
+  uploadDocument(payload) {
+    return this.request('/api/documents', { method: 'POST', body: payload });
+  },
+  // Descarga protegida por token: un <a href> normal no puede mandar el
+  // header Authorization, así que se pide el archivo con fetch y se
+  // dispara la descarga desde un blob en memoria.
+  async downloadDocument(id, filename) {
+    const headers = {};
+    const token = this.getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const siteToken = this.getSiteAccessToken();
+    if (siteToken) headers['X-Site-Access'] = siteToken;
+
+    const res = await fetch(`${CONFIG.API_BASE_URL}/api/documents/${id}/download`, { headers });
+    if (!res.ok) throw new Error('No se pudo descargar el documento');
+    const blob = await res.blob();
+    triggerBlobDownload(blob, filename);
+  },
+
+  async adminDownloadDocument(id, filename) {
+    const headers = {};
+    const adminToken = this.getAdminToken();
+    if (adminToken) headers['X-Admin-Token'] = adminToken;
+    const siteToken = this.getSiteAccessToken();
+    if (siteToken) headers['X-Site-Access'] = siteToken;
+
+    const res = await fetch(`${CONFIG.API_BASE_URL}/api/admin/documents/${id}/download`, { headers });
+    if (!res.ok) throw new Error('No se pudo descargar el documento');
+    const blob = await res.blob();
+    triggerBlobDownload(blob, filename);
+  },
+
+  // ---- Comunidad Zenith (chat simulado) ----
+  getCommunityMessages() {
+    return this.request('/api/community/messages');
+  },
+
+  // ---- Asesoría IA (Diamante/Platino) ----
+  getAiAdvisory() {
+    return this.request('/api/ai/advisory', { method: 'POST' });
   },
 
   getOptions() {

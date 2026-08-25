@@ -6,10 +6,10 @@
 
 const express = require('express');
 const {
+  getAccountById,
   getHoldingsByUser,
   getTradesByUser,
-  buyAsset,
-  sellAsset,
+  createPendingTrade,
   getOptionsByUser,
   openOption,
   resolveOption,
@@ -46,26 +46,44 @@ router.get('/trades', (req, res) => {
   res.json(getTradesByUser(req.user.id));
 });
 
-// POST /api/trading/buy
+// POST /api/trading/buy -> queda "pendiente": no mueve el balance ni crea
+// la posición todavía, eso pasa recién cuando se aprueba desde el panel
+// de administrador (ver routes/admin.js).
 router.post('/buy', (req, res) => {
   const parsed = parseOrder(req.body);
   if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-  const result = buyAsset({ userId: req.user.id, ...parsed });
+  const account = getAccountById(parsed.accountId, req.user.id);
+  if (!account) return res.status(400).json({ error: 'Cuenta no encontrada' });
+  const total = Number((parsed.quantity * parsed.price).toFixed(2));
+  if (total > account.balance) {
+    return res.status(400).json({ error: 'Saldo insuficiente en esta cuenta para esta compra' });
+  }
+
+  const result = createPendingTrade({ userId: req.user.id, side: 'compra', ...parsed });
   if (result.error) return res.status(400).json({ error: result.error });
 
   res.status(201).json(result);
 });
 
-// POST /api/trading/sell
+// POST /api/trading/sell -> igual que comprar, queda pendiente de
+// aprobación. Se avisa de una vez si claramente no hay suficiente cantidad
+// para vender (aviso amistoso) — la validación que de verdad cuenta es la
+// que se hace al aprobar, por si la posición cambió mientras tanto.
 router.post('/sell', (req, res) => {
   const parsed = parseOrder(req.body);
   if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-  const result = sellAsset({ userId: req.user.id, ...parsed });
+  const holdings = getHoldingsByUser(req.user.id);
+  const holding = holdings.find((h) => h.accountId === parsed.accountId && h.asset === parsed.asset);
+  if (!holding || parsed.quantity > holding.quantity) {
+    return res.status(400).json({ error: 'No tienes suficiente cantidad de este activo para vender' });
+  }
+
+  const result = createPendingTrade({ userId: req.user.id, side: 'venta', ...parsed });
   if (result.error) return res.status(400).json({ error: result.error });
 
-  res.json(result);
+  res.status(201).json(result);
 });
 
 // ---------------------------------------------------------------------

@@ -28,14 +28,33 @@ const CRYPTO_META = {
 };
 const TICKER_REFRESH_MS = 15_000;
 
+// Insignias Zenith: el rango se calcula en vivo con lo que el cliente tiene
+// invertido AHORA MISMO (balance de todas sus cuentas + valor de mercado de
+// sus posiciones abiertas, con el precio en vivo del ticker) — puede subir
+// o bajar con el tiempo, a diferencia de un total histórico. Los mismos
+// umbrales existen del lado del backend (data/store.js) como una
+// aproximación para proteger el acceso a la asesoría IA.
+const RANK_TIERS = [
+  { key: 'platino', label: 'Platino', min: 10000 },
+  { key: 'diamante', label: 'Diamante', min: 5000 },
+  { key: 'oro', label: 'Oro', min: 1500 },
+  { key: 'plata', label: 'Plata', min: 800 },
+  { key: 'bronce', label: 'Bronce', min: 250 },
+];
+// Desde qué rango se habilita la asesoría IA para automatizar inversiones.
+const ADVISORY_MIN_RANK_KEY = 'diamante';
+
 let accountsCache = [];
 let depositsCache = [];
 let withdrawalsCache = [];
 let holdingsCache = [];
+let tradesCache = [];
+let documentsCache = [];
 let previousTickerPrices = {};
 let currentPrices = {};
 let tradeMode = 'buy';
 let tradeAssetId = null;
+let currentRank = null; // { key, label } | null
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
@@ -48,15 +67,18 @@ document.addEventListener('DOMContentLoaded', () => {
   wireUserMenu();
   wireModal();
   wireAiPanel();
+  wireAdvisoryPanel();
   wireDepositModal();
   wireWithdrawModal();
   wireTradeModal();
-  wirePasswordModal();
+  wireProfileModal();
+  wireHoldingDetailModal();
 
   loadAccounts();
   loadDeposits();
   loadWithdrawals();
   loadHoldings();
+  loadTrades();
   loadTicker();
   setInterval(loadTicker, TICKER_REFRESH_MS);
 });
@@ -70,6 +92,52 @@ function renderUserChip() {
   const name = user?.username || 'Usuario';
   document.getElementById('user-name').textContent = name;
   document.getElementById('user-initial').textContent = name.charAt(0).toUpperCase();
+}
+
+// ---------------------------------------------------------------------
+// Insignias Zenith (Bronce/Plata/Oro/Diamante/Platino)
+// ---------------------------------------------------------------------
+
+function getRankForAmount(amount) {
+  return RANK_TIERS.find((t) => amount >= t.min) || null;
+}
+
+// Lo que el cliente tiene invertido ahora mismo: balance de todas sus
+// cuentas + valor de mercado de sus posiciones abiertas (con el precio en
+// vivo del ticker si ya llegó; si no, usa el precio promedio de compra
+// como aproximación mientras tanto).
+function computeInvestedTotal() {
+  const balanceTotal = accountsCache.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+  const holdingsTotal = holdingsCache.reduce((sum, h) => {
+    const price = typeof currentPrices[h.asset] === 'number' ? currentPrices[h.asset] : h.avgPrice;
+    return sum + Number(h.quantity || 0) * Number(price || 0);
+  }, 0);
+  return balanceTotal + holdingsTotal;
+}
+
+function updateRankBadge() {
+  const total = computeInvestedTotal();
+  currentRank = getRankForAmount(total);
+
+  const badgeEl = document.getElementById('rank-badge');
+  const avatarEl = document.getElementById('user-initial');
+  const allRankClasses = RANK_TIERS.map((t) => `rank-${t.key}`);
+
+  if (badgeEl) {
+    badgeEl.classList.remove(...allRankClasses);
+    if (currentRank) {
+      badgeEl.textContent = `★ Zenith ${currentRank.label}`;
+      badgeEl.classList.add(`rank-${currentRank.key}`);
+    } else {
+      badgeEl.textContent = '★ Zenith Investor';
+    }
+  }
+  if (avatarEl) {
+    avatarEl.classList.remove(...allRankClasses);
+    if (currentRank) avatarEl.classList.add(`rank-${currentRank.key}`);
+  }
+
+  updateAdvisoryVisibility();
 }
 
 function wireLogout() {
@@ -165,6 +233,7 @@ async function loadAccounts() {
     accountsCache = await Api.getAccounts();
     renderStatTiles(accountsCache);
     renderAccounts(accountsCache);
+    updateRankBadge();
   } catch (err) {
     showToast(err.message, 'error');
     if (!Api.isLoggedIn()) {
@@ -693,16 +762,18 @@ async function handleTradeSubmit(event) {
   submitBtn.disabled = true;
 
   try {
+    // Comprar/vender ya no ejecuta al instante: la operación queda en
+    // revisión hasta que se apruebe desde el panel de administrador, así
+    // que ni el balance ni las posiciones cambian todavía.
     if (tradeMode === 'buy') {
       await Api.buyAsset(payload);
-      showToast(`Compra realizada: ${payload.quantity} ${meta.symbol}`, 'success');
+      showToast(`Tu compra de ${payload.quantity} ${meta.symbol} quedó en revisión`, 'info');
     } else {
       await Api.sellAsset(payload);
-      showToast(`Venta realizada: ${payload.quantity} ${meta.symbol}`, 'success');
+      showToast(`Tu venta de ${payload.quantity} ${meta.symbol} quedó en revisión`, 'info');
     }
     closeTradeModal();
-    loadAccounts();
-    loadHoldings();
+    loadTrades();
   } catch (err) {
     showTradeModalError(err.message);
   } finally {
@@ -714,6 +785,7 @@ async function loadHoldings() {
   try {
     holdingsCache = await Api.getHoldings();
     renderHoldings(holdingsCache);
+    updateRankBadge();
   } catch (err) {
     // Silencioso: un fallo aquí no debe tumbar el resto del dashboard.
   }
@@ -751,7 +823,8 @@ function renderHoldings(holdings) {
       <td style="text-align:right; color:${plUp ? 'var(--good)' : plDown ? 'var(--critical)' : 'var(--text-muted)'}">
         ${pl !== null ? `${plUp ? '▲' : plDown ? '▼' : '—'} ${money(pl)}` : '—'}
       </td>
-      <td style="text-align:right;">
+      <td style="text-align:right; white-space:nowrap;">
+        <button class="btn btn-secondary btn-sm" data-action="detail-holding" data-asset="${h.asset}">Detalles</button>
         <button class="btn btn-sell btn-sm" data-action="sell-holding" data-asset="${h.asset}">Vender</button>
       </td>
     `;
@@ -761,36 +834,331 @@ function renderHoldings(holdings) {
   body.querySelectorAll('[data-action="sell-holding"]').forEach((btn) => {
     btn.addEventListener('click', () => openTradeModal('sell', btn.dataset.asset));
   });
+  body.querySelectorAll('[data-action="detail-holding"]').forEach((btn) => {
+    btn.addEventListener('click', () => openHoldingDetailModal(btn.dataset.asset));
+  });
 }
 
 // ---------------------------------------------------------------------
-// Cambiar contraseña
+// Detalle de una posición: inversión inicial vs valor actual, cuánto se
+// ganó/perdió, y el historial de compras/ventas de ese activo — para que
+// el usuario pueda hacer seguimiento a su inversión sin tener que calcular
+// nada a mano.
 // ---------------------------------------------------------------------
 
-function wirePasswordModal() {
-  const overlay = document.getElementById('password-modal');
-  const form = document.getElementById('password-form');
-
-  document.getElementById('open-change-password').addEventListener('click', openPasswordModal);
-  document.getElementById('password-modal-close').addEventListener('click', closePasswordModal);
-  document.getElementById('password-modal-cancel').addEventListener('click', closePasswordModal);
+function wireHoldingDetailModal() {
+  const overlay = document.getElementById('holding-detail-modal');
+  if (!overlay) return;
+  document.getElementById('holding-detail-close').addEventListener('click', closeHoldingDetailModal);
   overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) closePasswordModal();
+    if (event.target === overlay) closeHoldingDetailModal();
+  });
+}
+
+function closeHoldingDetailModal() {
+  document.getElementById('holding-detail-modal').classList.remove('is-visible');
+}
+
+function openHoldingDetailModal(asset) {
+  const holding = holdingsCache.find((h) => h.asset === asset);
+  if (!holding) return;
+
+  const meta = CRYPTO_META[asset] || { name: holding.symbol, symbol: holding.symbol };
+  const currentPrice = typeof currentPrices[asset] === 'number' ? currentPrices[asset] : holding.avgPrice;
+
+  const initialInvestment = holding.avgPrice * holding.quantity;
+  const currentValue = currentPrice * holding.quantity;
+  const pl = currentValue - initialInvestment;
+  const plPercent = initialInvestment > 0 ? (pl / initialInvestment) * 100 : 0;
+  const plUp = pl > 0;
+  const plDown = pl < 0;
+
+  document.getElementById('holding-detail-title').textContent = `${meta.name} (${meta.symbol})`;
+  document.getElementById('holding-detail-quantity').textContent = holding.quantity;
+  document.getElementById('holding-detail-avgprice').textContent = money(holding.avgPrice);
+  document.getElementById('holding-detail-currentprice').textContent = money(currentPrice);
+  document.getElementById('holding-detail-initial').textContent = money(initialInvestment);
+  document.getElementById('holding-detail-current').textContent = money(currentValue);
+
+  const plEl = document.getElementById('holding-detail-pl');
+  plEl.textContent = `${plUp ? '▲' : plDown ? '▼' : '—'} ${money(pl)} (${plUp ? '+' : ''}${plPercent.toFixed(2)}%)`;
+  plEl.style.color = plUp ? 'var(--good)' : plDown ? 'var(--critical)' : 'var(--text-muted)';
+
+  // Historial de compras/ventas de este activo, más reciente primero —
+  // así se ve cuándo se compró/vendió y en qué quedó cada solicitud.
+  const relatedTrades = tradesCache.filter((t) => t.asset === asset);
+  const historyBody = document.getElementById('holding-detail-history-body');
+  const historyEmpty = document.getElementById('holding-detail-history-empty');
+  historyBody.innerHTML = '';
+  if (relatedTrades.length === 0) {
+    historyEmpty.style.display = 'block';
+  } else {
+    historyEmpty.style.display = 'none';
+    relatedTrades.forEach((t) => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${new Date(t.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
+        <td>${t.side === 'compra' ? 'Compra' : 'Venta'}</td>
+        <td style="text-align:right;">${t.quantity}</td>
+        <td style="text-align:right;">${money(t.price)}</td>
+        <td><span class="badge badge-trade-${t.status}">${tradeStatusLabel(t.status)}</span></td>
+      `;
+      historyBody.appendChild(row);
+    });
+  }
+
+  document.getElementById('holding-detail-modal').classList.add('is-visible');
+}
+
+// ---------------------------------------------------------------------
+// Historial de operaciones (compras/ventas) — ahora que comprar/vender
+// queda "pendiente" hasta que Lucas lo revisa desde el panel de
+// administrador, el usuario necesita ver en qué quedó cada solicitud:
+// pendiente, aprobada (con el monto/cantidad final, que puede haber sido
+// editado) o rechazada.
+// ---------------------------------------------------------------------
+
+async function loadTrades() {
+  try {
+    tradesCache = await Api.getTrades();
+    renderTrades(tradesCache);
+  } catch (err) {
+    // Silencioso: un fallo aquí no debe tumbar el resto del dashboard.
+  }
+}
+
+function tradeStatusLabel(status) {
+  const labels = {
+    pendiente: 'Pendiente',
+    aprobada: 'Aprobada',
+    rechazada: 'Rechazada',
+  };
+  return labels[status] || status;
+}
+
+function renderTrades(trades) {
+  const body = document.getElementById('trades-body');
+  const empty = document.getElementById('trades-empty');
+  const table = document.getElementById('trades-table');
+  if (!body || !empty || !table) return; // sección opcional, por si el HTML no la tiene todavía
+
+  body.innerHTML = '';
+
+  if (trades.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  trades.forEach((t) => {
+    const meta = CRYPTO_META[t.asset] || { name: t.symbol, symbol: t.symbol };
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${new Date(t.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
+      <td>${t.side === 'compra' ? 'Compra' : 'Venta'}</td>
+      <td>${escapeHtml(meta.name)} (${escapeHtml(meta.symbol)})</td>
+      <td style="text-align:right;">${t.quantity}</td>
+      <td style="text-align:right;">${money(t.price)}</td>
+      <td style="text-align:right;">${money(t.total)}</td>
+      <td><span class="badge badge-trade-${t.status}">${tradeStatusLabel(t.status)}</span></td>
+    `;
+    body.appendChild(row);
+  });
+}
+
+// ---------------------------------------------------------------------
+// Modal "Mi perfil": datos personales, documentos y contraseña
+// ---------------------------------------------------------------------
+
+function wireProfileModal() {
+  const overlay = document.getElementById('profile-modal');
+
+  document.getElementById('open-profile-modal').addEventListener('click', openProfileModal);
+  document.getElementById('profile-modal-close').addEventListener('click', closeProfileModal);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeProfileModal();
   });
 
-  form.addEventListener('submit', handlePasswordSubmit);
+  // Pestañas internas del modal
+  overlay.querySelectorAll('[data-profile-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => activateProfileTab(btn.dataset.profileTab));
+  });
+
+  document.getElementById('profile-data-form').addEventListener('submit', handleProfileDataSubmit);
+  document.getElementById('profile-doc-upload-btn').addEventListener('click', handleDocumentUpload);
+  document.getElementById('password-form').addEventListener('submit', handlePasswordSubmit);
 }
 
-function openPasswordModal() {
-  document.getElementById('password-form').reset();
+function activateProfileTab(tab) {
+  document.querySelectorAll('[data-profile-tab]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.profileTab === tab);
+  });
+  document.querySelectorAll('[data-profile-panel]').forEach((panel) => {
+    panel.classList.toggle('is-active', panel.dataset.profilePanel === tab);
+  });
+}
+
+async function openProfileModal() {
+  activateProfileTab('datos');
   hidePasswordModalError();
   hidePasswordModalSuccess();
-  document.getElementById('password-modal').classList.add('is-visible');
-  document.getElementById('password-current').focus();
+  document.getElementById('password-form').reset();
+  document.getElementById('profile-modal').classList.add('is-visible');
+
+  try {
+    const profile = await Api.getMe();
+    document.getElementById('profile-fullname').textContent = profile.fullName || profile.username;
+    document.getElementById('profile-email').textContent = profile.email || '—';
+    document.getElementById('profile-avatar').textContent = (profile.fullName || profile.username || 'U').charAt(0).toUpperCase();
+    document.getElementById('profile-phone').value = profile.phone || '';
+    document.getElementById('profile-birthdate').value = profile.birthDate || '';
+    document.getElementById('profile-address').value = profile.address || '';
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+
+  loadDocuments();
 }
-function closePasswordModal() {
-  document.getElementById('password-modal').classList.remove('is-visible');
+
+function closeProfileModal() {
+  document.getElementById('profile-modal').classList.remove('is-visible');
 }
+
+// ---- Datos personales ----
+
+function showProfileDataError(message) {
+  document.getElementById('profile-data-error-text').textContent = message;
+  document.getElementById('profile-data-error').classList.add('is-visible');
+}
+function hideProfileDataError() {
+  document.getElementById('profile-data-error').classList.remove('is-visible');
+}
+function showProfileDataSuccess(message) {
+  document.getElementById('profile-data-success-text').textContent = message;
+  document.getElementById('profile-data-success').classList.add('is-visible');
+}
+function hideProfileDataSuccess() {
+  document.getElementById('profile-data-success').classList.remove('is-visible');
+}
+
+async function handleProfileDataSubmit(event) {
+  event.preventDefault();
+  hideProfileDataError();
+  hideProfileDataSuccess();
+
+  const payload = {
+    phone: document.getElementById('profile-phone').value.trim(),
+    birthDate: document.getElementById('profile-birthdate').value || null,
+    address: document.getElementById('profile-address').value.trim() || null,
+  };
+
+  const submitBtn = document.getElementById('profile-data-submit');
+  submitBtn.disabled = true;
+  try {
+    await Api.updateProfile(payload);
+    showProfileDataSuccess('Datos actualizados correctamente');
+  } catch (err) {
+    showProfileDataError(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+// ---- Documentos (PDFs) ----
+
+async function loadDocuments() {
+  try {
+    documentsCache = await Api.getDocuments();
+    renderDocuments(documentsCache);
+  } catch (err) {
+    // Silencioso: un fallo aquí no debe tumbar el resto del modal.
+  }
+}
+
+function showProfileDocsError(message) {
+  document.getElementById('profile-docs-error-text').textContent = message;
+  document.getElementById('profile-docs-error').classList.add('is-visible');
+}
+function hideProfileDocsError() {
+  document.getElementById('profile-docs-error').classList.remove('is-visible');
+}
+
+function renderDocuments(docs) {
+  const list = document.getElementById('profile-docs-list');
+  const empty = document.getElementById('profile-docs-empty');
+  list.innerHTML = '';
+
+  if (docs.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  docs.forEach((doc) => {
+    const item = document.createElement('div');
+    item.className = 'document-item';
+    item.innerHTML = `
+      <div>
+        <div class="document-item-name">📄 ${escapeHtml(doc.filename)}</div>
+        <div class="document-item-meta">${new Date(doc.uploadedAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })} · ${(doc.size / 1024).toFixed(0)} KB</div>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" data-action="download-doc" data-id="${doc.id}" data-filename="${escapeHtml(doc.filename)}">Descargar</button>
+    `;
+    list.appendChild(item);
+  });
+
+  list.querySelectorAll('[data-action="download-doc"]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await Api.downloadDocument(Number(btn.dataset.id), btn.dataset.filename);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleDocumentUpload() {
+  hideProfileDocsError();
+  const input = document.getElementById('profile-doc-input');
+  const file = input.files[0];
+  if (!file) {
+    showProfileDocsError('Elige un archivo PDF primero');
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    showProfileDocsError('Solo se permiten archivos con extensión .pdf');
+    return;
+  }
+
+  const btn = document.getElementById('profile-doc-upload-btn');
+  btn.disabled = true;
+  try {
+    const dataBase64 = await fileToBase64(file);
+    await Api.uploadDocument({ filename: file.name, dataBase64 });
+    input.value = '';
+    showToast('Documento subido', 'success');
+    loadDocuments();
+  } catch (err) {
+    showProfileDocsError(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---- Contraseña ----
+
 function showPasswordModalError(message) {
   document.getElementById('password-modal-error-text').textContent = message;
   document.getElementById('password-modal-error').classList.add('is-visible');
@@ -865,6 +1233,63 @@ async function generateAiInsight(event) {
     resultBox.style.display = 'block';
   } catch (err) {
     document.getElementById('ai-error-text').textContent = err.message;
+    errorBox.classList.add('is-visible');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Asesoría IA avanzada (solo insignias Diamante y Platino) — da
+// recomendaciones para que el usuario decida; cualquier compra/venta que
+// haga después sigue pasando por la aprobación manual normal, igual que
+// cualquier otra operación.
+// ---------------------------------------------------------------------
+
+function wireAdvisoryPanel() {
+  document.getElementById('advisory-generate-btn').addEventListener('click', generateAdvisory);
+  document.getElementById('advisory-regenerate-btn').addEventListener('click', generateAdvisory);
+}
+
+function updateAdvisoryVisibility() {
+  const section = document.getElementById('advisory-section');
+  if (!section) return;
+  const minIndex = RANK_TIERS.findIndex((t) => t.key === ADVISORY_MIN_RANK_KEY);
+  const currentIndex = currentRank ? RANK_TIERS.findIndex((t) => t.key === currentRank.key) : -1;
+  // RANK_TIERS está ordenado de mayor a menor umbral, así que "alcanza" el
+  // mínimo cuando su posición es igual o anterior (índice menor o igual).
+  const qualifies = currentIndex !== -1 && currentIndex <= minIndex;
+  section.style.display = qualifies ? 'block' : 'none';
+  if (qualifies && currentRank) {
+    const pill = document.getElementById('advisory-rank-pill');
+    pill.textContent = currentRank.label;
+    pill.className = `badge-pill rank-${currentRank.key}`;
+  }
+}
+
+async function generateAdvisory(event) {
+  const button = event.currentTarget;
+  const emptyState = document.getElementById('advisory-empty');
+  const resultBox = document.getElementById('advisory-result');
+  const errorBox = document.getElementById('advisory-error');
+
+  errorBox.classList.remove('is-visible');
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = 'Analizando…';
+
+  try {
+    const { advisory, model, generatedAt } = await Api.getAiAdvisory();
+
+    document.getElementById('advisory-result-text').textContent = advisory;
+    document.getElementById('advisory-result-meta').textContent =
+      `Generado por ${model} · ${new Date(generatedAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`;
+
+    emptyState.style.display = 'none';
+    resultBox.style.display = 'block';
+  } catch (err) {
+    document.getElementById('advisory-error-text').textContent = err.message;
     errorBox.classList.add('is-visible');
   } finally {
     button.disabled = false;
@@ -950,6 +1375,8 @@ function renderTicker(data) {
     btn.addEventListener('click', () => openTradeModal('sell', btn.dataset.id));
   });
 
-  // Los precios cambiaron: refresca el P/L de las posiciones abiertas.
+  // Los precios cambiaron: refresca el P/L de las posiciones abiertas y,
+  // con eso, la insignia (depende del valor de mercado de las posiciones).
   renderHoldings(holdingsCache);
+  updateRankBadge();
 }

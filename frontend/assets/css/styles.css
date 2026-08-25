@@ -197,6 +197,53 @@ button, input, select { font-family: inherit; }
 }
 .form-error.is-visible { display: flex; }
 
+/* ---------------------------------------------------------------------- */
+/* Bloqueo de acceso del sitio (site-gate.js) — pantalla completa que      */
+/* tapa TODO lo demás hasta que se confirme el código de acceso.          */
+/* ---------------------------------------------------------------------- */
+
+.site-gate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: var(--page-bg);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.site-gate.is-active { display: flex; }
+
+.site-gate-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.site-gate-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 22px;
+}
+
+.site-gate-status {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.site-gate-form { text-align: left; }
+
+.site-gate-form input { text-align: center; letter-spacing: 0.2em; }
+
 .form-success {
   display: none;
   align-items: center;
@@ -349,7 +396,7 @@ button, input, select { font-family: inherit; }
   padding: 20px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: linear-gradient(160deg, rgba(201, 162, 77, 0.10), rgba(57, 135, 229, 0.06));
+  background: linear-gradient(160deg, rgba(201, 162, 77, 0.16), rgba(57, 135, 229, 0.10)), var(--surface);
 }
 
 .ai-callout-icon {
@@ -527,6 +574,39 @@ button, input, select { font-family: inherit; }
   color: var(--gold-hover);
   text-transform: uppercase;
 }
+
+/* Insignias Zenith (Bronce/Plata/Oro/Diamante/Platino) — el color del
+   nombre y del avatar del usuario cambia según su rango, calculado en vivo
+   con su balance + posiciones a precio de mercado (ver dashboard.js). */
+.investor-badge.rank-bronce { color: #cd7f32; }
+.investor-badge.rank-plata { color: #b9c1cc; }
+.investor-badge.rank-oro { color: #e6b800; }
+.investor-badge.rank-diamante { color: #5ad1e0; }
+.investor-badge.rank-platino { color: #e5e4f0; }
+
+.user-avatar.rank-bronce { background: rgba(205, 127, 50, 0.18); color: #cd7f32; }
+.user-avatar.rank-plata { background: rgba(185, 193, 204, 0.18); color: #b9c1cc; }
+.user-avatar.rank-oro { background: rgba(230, 184, 0, 0.18); color: #e6b800; }
+.user-avatar.rank-diamante { background: rgba(90, 209, 224, 0.18); color: #5ad1e0; }
+.user-avatar.rank-platino { background: rgba(229, 228, 240, 0.18); color: #e5e4f0; }
+
+/* Chips de insignia reutilizables (comunidad, detalle de inversión, etc.) */
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.badge-pill.rank-bronce { background: rgba(205, 127, 50, 0.16); color: #cd7f32; }
+.badge-pill.rank-plata { background: rgba(185, 193, 204, 0.16); color: #b9c1cc; }
+.badge-pill.rank-oro { background: rgba(230, 184, 0, 0.16); color: #e6b800; }
+.badge-pill.rank-diamante { background: rgba(90, 209, 224, 0.16); color: #5ad1e0; }
+.badge-pill.rank-platino { background: rgba(229, 228, 240, 0.16); color: #e5e4f0; }
 
 .user-avatar {
   width: 28px;
@@ -785,6 +865,12 @@ button, input, select { font-family: inherit; }
 .badge.badge-en_proceso { background: var(--warning-soft); color: #a87005; }
 .badge.badge-completado { background: var(--good-soft); color: var(--good); }
 .badge.badge-rechazado { background: var(--critical-soft); color: var(--critical); }
+
+/* Estados de compra/venta (reutiliza .badge) ------------------------------- */
+
+.badge.badge-trade-pendiente { background: var(--warning-soft); color: #a87005; }
+.badge.badge-trade-aprobada { background: var(--good-soft); color: var(--good); }
+.badge.badge-trade-rechazada { background: var(--critical-soft); color: var(--critical); }
 
 /* Comprobante de depósito -------------------------------------------------- */
 
@@ -1268,6 +1354,229 @@ button, input, select { font-family: inherit; }
   max-width: 420px;
   padding: 24px;
   box-shadow: var(--shadow-card);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.modal-wide { max-width: 560px; }
+
+.terms-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+.terms-text p { margin: 0 0 10px; }
+.terms-text p:last-child { margin-bottom: 0; }
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Modal "Mi perfil" ------------------------------------------------------- */
+
+.profile-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-summary .user-avatar { width: 40px; height: 40px; font-size: 15px; }
+.profile-fullname { font-weight: 700; font-size: 15px; }
+.profile-email { font-size: 13px; color: var(--text-muted); }
+
+.profile-tabs { margin-bottom: 18px; }
+
+.profile-tab-panel { display: none; }
+.profile-tab-panel.is-active { display: block; }
+
+.document-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.document-upload-row input[type="file"] {
+  flex: 1;
+  min-width: 180px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.document-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.document-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.document-item-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.document-item-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Modal "Detalles" de una posición ---------------------------------------- */
+
+.holding-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.holding-detail-metric {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: 12px 14px;
+}
+.holding-detail-metric .label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+.holding-detail-metric .value {
+  font-size: 15px;
+  font-weight: 700;
+}
+.holding-detail-history-title {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+@media (max-width: 520px) {
+  .holding-detail-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Comunidad Zenith --------------------------------------------------------- */
+
+.community-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.community-members {
+  border-right: 1px solid var(--border);
+  padding: 18px;
+  max-height: 640px;
+  overflow-y: auto;
+}
+.community-members-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+.community-members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.community-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.community-member-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.community-chat {
+  display: flex;
+  flex-direction: column;
+}
+.community-chat-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  max-height: 640px;
+  min-height: 320px;
+  overflow-y: auto;
+}
+
+.chat-message {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.chat-message-body { flex: 1; min-width: 0; }
+.chat-message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.chat-message-name { font-size: 13px; font-weight: 700; }
+.chat-message-time { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.chat-message-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  line-height: 1.5;
+  display: inline-block;
+}
+
+.community-disclaimer {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 16px;
+}
+
+@media (max-width: 860px) {
+  .community-layout { grid-template-columns: 1fr; }
+  .community-members {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 220px;
+  }
 }
 
 .modal-header {
@@ -1318,6 +1627,76 @@ button, input, select { font-family: inherit; }
 }
 .toast.is-error { border-left-color: var(--critical); }
 .toast.is-success { border-left-color: var(--good); }
+
+/* Panel de administrador: cola de aprobación ------------------------------ */
+
+.pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pending-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  background: var(--surface-2);
+}
+
+.pending-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pending-item-user {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.pending-item-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.pending-item-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.pending-item-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.pending-item-field label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pending-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pending-item-error {
+  color: var(--critical);
+  font-size: 13px;
+  margin-top: 8px;
+  display: none;
+}
+.pending-item-error.is-visible { display: block; }
 
 /* ---------------------------------------------------------------------- */
 /* Responsive                                                             */

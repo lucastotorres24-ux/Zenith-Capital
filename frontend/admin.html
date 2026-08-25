@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Zenith Capital — Panel de administrador</title>
+<link rel="icon" type="image/png" href="assets/img/logo.png" />
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+<div class="site-gate is-active" id="site-gate">
+  <div class="site-gate-card">
+    <div class="site-gate-brand">
+      <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+      <span>Zenith Capital</span>
+    </div>
+    <p class="site-gate-status" id="site-gate-status">Verificando acceso…</p>
+    <form id="site-gate-form" class="site-gate-form" style="display:none;" novalidate>
+      <div class="field">
+        <label for="site-gate-input">Código de acceso</label>
+        <input id="site-gate-input" type="password" autocomplete="off" placeholder="••••••" />
+      </div>
+      <div class="form-error" id="site-gate-error">
+        <span>⚠</span>
+        <span id="site-gate-error-text">Código incorrecto.</span>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="site-gate-submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- Segundo bloqueo, independiente del anterior: solo aparece después de
+     pasar el código general del sitio, y pide el código de administrador
+     (ADMIN_CODE) — separado de cualquier usuario/contraseña normal. -->
+<div class="site-gate" id="admin-gate">
+  <div class="site-gate-card">
+    <div class="site-gate-brand">
+      <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+      <span>Panel de administrador</span>
+    </div>
+    <p class="site-gate-status" id="admin-gate-status" style="display:none;">Verificando…</p>
+    <form id="admin-gate-form" class="site-gate-form" novalidate>
+      <div class="field">
+        <label for="admin-gate-input">Código de administrador</label>
+        <input id="admin-gate-input" type="password" autocomplete="off" placeholder="••••••" />
+      </div>
+      <div class="form-error" id="admin-gate-error">
+        <span>⚠</span>
+        <span id="admin-gate-error-text">Código incorrecto.</span>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="admin-gate-submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+    <span>Zenith Capital · Admin</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-ghost btn-sm" id="admin-logout-btn">Salir del panel</button>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-header">
+    <div>
+      <h1>Panel de aprobación</h1>
+      <p class="subtitle">Cada depósito, retiro, compra o venta que hace un usuario queda "en revisión" hasta que la apruebas (con el monto/cantidad que quieras dejar), la modificas o la rechazas. Esta pantalla se actualiza sola cada 15 segundos.</p>
+    </div>
+  </div>
+
+  <section class="section" style="margin-bottom: 24px;">
+    <div class="section-header">
+      <div>
+        <h2>Depósitos pendientes</h2>
+        <div class="subtitle">Elige a qué cuenta del usuario va y el monto final antes de aprobar.</div>
+      </div>
+      <span class="badge" id="deposits-pending-count">0</span>
+    </div>
+    <div class="section-body">
+      <div class="empty-state" id="pending-deposits-empty">
+        <div class="icon">💵</div>
+        <div>No hay depósitos pendientes por el momento.</div>
+      </div>
+      <div id="pending-deposits-list" class="pending-list"></div>
+    </div>
+  </section>
+
+  <section class="section" style="margin-bottom: 24px;">
+    <div class="section-header">
+      <div>
+        <h2>Retiros pendientes</h2>
+        <div class="subtitle">Elige de qué cuenta del usuario sale y el monto final antes de aprobar.</div>
+      </div>
+      <span class="badge" id="withdrawals-pending-count">0</span>
+    </div>
+    <div class="section-body">
+      <div class="empty-state" id="pending-withdrawals-empty">
+        <div class="icon">🏦</div>
+        <div>No hay retiros pendientes por el momento.</div>
+      </div>
+      <div id="pending-withdrawals-list" class="pending-list"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Compras y ventas pendientes</h2>
+        <div class="subtitle">Puedes ajustar la cantidad y/o el precio final antes de aprobar.</div>
+      </div>
+      <span class="badge" id="trades-pending-count">0</span>
+    </div>
+    <div class="section-body">
+      <div class="empty-state" id="pending-trades-empty">
+        <div class="icon">📈</div>
+        <div>No hay compras/ventas pendientes por el momento.</div>
+      </div>
+      <div id="pending-trades-list" class="pending-list"></div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/site-gate.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/admin.js"></script>
+</body>
+</html>

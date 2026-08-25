@@ -67,28 +67,77 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---- Registro ----
+  // El formulario en sí no crea la cuenta al enviarse: primero abre el
+  // popup de términos y condiciones (con el checkbox obligatorio) y recién
+  // cuando lo confirma ahí es que se manda la solicitud de registro.
   const registerForm = document.getElementById('register-form');
   const registerSubmit = document.getElementById('register-submit');
 
-  registerForm.addEventListener('submit', async (event) => {
+  const termsModal = document.getElementById('terms-modal');
+  const termsCheckbox = document.getElementById('terms-checkbox');
+  const termsConfirmBtn = document.getElementById('terms-modal-confirm');
+  const termsCancelBtn = document.getElementById('terms-modal-cancel');
+  const termsCloseBtn = document.getElementById('terms-modal-close');
+  const termsErrorBox = document.getElementById('terms-modal-error');
+  const termsErrorText = document.getElementById('terms-modal-error-text');
+
+  let pendingRegistration = null;
+
+  function openTermsModal() {
+    termsCheckbox.checked = false;
+    termsConfirmBtn.disabled = true;
+    termsErrorBox.classList.remove('is-visible');
+    termsModal.classList.add('is-visible');
+  }
+  function closeTermsModal() {
+    termsModal.classList.remove('is-visible');
+    pendingRegistration = null;
+  }
+
+  termsCheckbox.addEventListener('change', () => {
+    termsConfirmBtn.disabled = !termsCheckbox.checked;
+  });
+  termsCancelBtn.addEventListener('click', closeTermsModal);
+  termsCloseBtn.addEventListener('click', closeTermsModal);
+  termsModal.addEventListener('click', (event) => {
+    if (event.target === termsModal) closeTermsModal();
+  });
+
+  registerForm.addEventListener('submit', (event) => {
     event.preventDefault();
     hideError();
 
-    const username = registerForm.username.value.trim();
-    const password = registerForm.password.value;
+    pendingRegistration = {
+      username: registerForm.username.value.trim(),
+      password: registerForm.password.value,
+      fullName: registerForm.fullName.value.trim(),
+      email: registerForm.email.value.trim(),
+      phone: registerForm.phone.value.trim(),
+    };
+    openTermsModal();
+  });
 
-    setLoading(registerSubmit, true, 'Creando cuenta…');
+  termsConfirmBtn.addEventListener('click', async () => {
+    if (!pendingRegistration || !termsCheckbox.checked) return;
+
+    termsErrorBox.classList.remove('is-visible');
+    setLoading(termsConfirmBtn, true, 'Creando cuenta…');
     try {
-      await Api.register(username, password);
+      const { username, password } = pendingRegistration;
+      await Api.register({ ...pendingRegistration, acceptedTerms: true });
       // Registro exitoso -> lo logueamos automáticamente para que no
       // tenga que volver a escribir sus datos.
       const { token, user } = await Api.login(username, password);
       Api.setSession(token, user);
       window.location.href = 'dashboard.html';
     } catch (err) {
+      // El problema es de los datos del formulario (usuario ya existe,
+      // correo inválido, etc.) — cerramos el popup y mostramos el error
+      // donde la persona sí puede corregirlo.
+      closeTermsModal();
       showError(err.message);
     } finally {
-      setLoading(registerSubmit, false);
+      setLoading(termsConfirmBtn, false);
     }
   });
 });

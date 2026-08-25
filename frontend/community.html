@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zenith Capital — Comunidad</title>
+<link rel="icon" type="image/png" href="assets/img/logo.png" />
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+<div class="site-gate is-active" id="site-gate">
+  <div class="site-gate-card">
+    <div class="site-gate-brand">
+      <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+      <span>Zenith Capital</span>
+    </div>
+    <p class="site-gate-status" id="site-gate-status">Verificando acceso…</p>
+    <form id="site-gate-form" class="site-gate-form" style="display:none;" novalidate>
+      <div class="field">
+        <label for="site-gate-input">Código de acceso</label>
+        <input id="site-gate-input" type="password" autocomplete="off" placeholder="••••••" />
+      </div>
+      <div class="form-error" id="site-gate-error">
+        <span>⚠</span>
+        <span id="site-gate-error-text">Código incorrecto.</span>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="site-gate-submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+    <span>Zenith Capital</span>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip">
+      <span class="user-avatar" id="user-initial">U</span>
+      <div class="user-chip-text">
+        <span id="user-name">—</span>
+      </div>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="dashboard.html">← Volver al dashboard</a>
+    <button class="btn btn-ghost btn-sm" id="logout-btn">Cerrar sesión</button>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-header">
+    <div>
+      <h1>Comunidad Zenith</h1>
+      <p class="subtitle">Clientes certificados Zenith de todos los rangos, conversando sobre el mercado y la plataforma.</p>
+    </div>
+  </div>
+
+  <section class="section community-layout">
+    <div class="community-members">
+      <h3 class="community-members-title">Clientes certificados</h3>
+      <div id="community-members-list" class="community-members-list">
+        <!-- se llena por JS -->
+      </div>
+    </div>
+
+    <div class="community-chat">
+      <div class="community-chat-feed" id="community-feed">
+        <!-- se llena por JS -->
+      </div>
+    </div>
+  </section>
+
+  <p class="community-disclaimer">
+    💡 Esta comunidad es simulada — los mensajes son generados automáticamente para ambientar la plataforma
+    de práctica y no provienen de personas reales.
+  </p>
+
+</main>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/site-gate.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/community.js"></script>
+</body>
+</html>

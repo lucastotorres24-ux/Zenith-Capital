@@ -9,6 +9,27 @@
 </head>
 <body>
 
+<div class="site-gate is-active" id="site-gate">
+  <div class="site-gate-card">
+    <div class="site-gate-brand">
+      <img class="brand-mark" src="assets/img/logo.png" alt="Zenith Capital" />
+      <span>Zenith Capital</span>
+    </div>
+    <p class="site-gate-status" id="site-gate-status">Verificando acceso…</p>
+    <form id="site-gate-form" class="site-gate-form" style="display:none;" novalidate>
+      <div class="field">
+        <label for="site-gate-input">Código de acceso</label>
+        <input id="site-gate-input" type="password" autocomplete="off" placeholder="••••••" />
+      </div>
+      <div class="form-error" id="site-gate-error">
+        <span>⚠</span>
+        <span id="site-gate-error-text">Código incorrecto.</span>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="site-gate-submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
 <div class="auth-shell">
 
   <!-- Panel izquierdo: branding, no es funcional, es contexto/marca -->
@@ -114,8 +135,22 @@
 
         <form id="register-form" novalidate>
           <div class="field">
+            <label for="register-fullname">Nombre completo</label>
+            <input id="register-fullname" name="fullName" type="text" placeholder="Como aparece en tu documento" autocomplete="name" required />
+          </div>
+          <div class="field">
             <label for="register-username">Usuario</label>
             <input id="register-username" name="username" type="text" placeholder="Mínimo 3 caracteres" autocomplete="username" required />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="register-email">Correo</label>
+              <input id="register-email" name="email" type="email" placeholder="tucorreo@ejemplo.com" autocomplete="email" required />
+            </div>
+            <div class="field">
+              <label for="register-phone">Número de celular</label>
+              <input id="register-phone" name="phone" type="tel" placeholder="300 123 4567" autocomplete="tel" required />
+            </div>
           </div>
           <div class="field">
             <label for="register-password">Contraseña</label>
@@ -133,7 +168,41 @@
 
 </div>
 
+<!-- Popup de términos y condiciones — aparece justo antes de terminar de
+     crear la cuenta, con un checkbox obligatorio. -->
+<div class="modal-overlay" id="terms-modal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Términos y condiciones</h3>
+      <button type="button" class="modal-close" id="terms-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="terms-text">
+      <p><strong>Zenith Capital es un simulador de práctica.</strong> Ningún depósito, retiro, compra o venta realizado en esta plataforma mueve dinero real ni constituye un servicio financiero real — todos los saldos, precios y resultados son parte de un entorno educativo.</p>
+      <p>Al registrarte, confirmas que entiendes que:</p>
+      <p>1) Ninguna cifra que veas aquí representa dinero real ni una inversión real.<br>
+      2) Los depósitos, retiros, compras y ventas quedan sujetos a revisión y aprobación manual antes de aplicarse.<br>
+      3) Los datos que ingreses (nombre, correo, celular y los que agregues luego en tu perfil) se usan únicamente dentro de esta plataforma de práctica.<br>
+      4) Cualquier análisis o sugerencia generada por IA es contenido educativo, no una recomendación financiera real.</p>
+    </div>
+    <label class="checkbox-row">
+      <input type="checkbox" id="terms-checkbox" />
+      <span>Acepto los términos y condiciones</span>
+    </label>
+    <div class="form-error" id="terms-modal-error">
+      <span>⚠</span>
+      <span id="terms-modal-error-text">Algo salió mal.</span>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" id="terms-modal-cancel">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="terms-modal-confirm" disabled>Crear cuenta</button>
+    </div>
+  </div>
+</div>
+
 <script src="assets/js/config.js"></script>
+<script src="assets/js/site-gate.js"></script>
 <script src="assets/js/api.js"></script>
 <script src="assets/js/auth.js"></script>
 <script src="assets/js/invest-rain.js"></script>

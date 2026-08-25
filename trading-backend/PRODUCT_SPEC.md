@@ -35,11 +35,60 @@ así no hay que repetir el contexto en cada conversación.
 - **Fase 0 (fundamento de datos) — holdings**: cada cuenta puede tener
   posiciones abiertas por activo (cantidad + precio medio de compra).
 - **Comprar / Vender v1**: botones COMPRAR (verde) y VENDER (rojo) en el
-  ticker de cripto y en cada posición abierta. Comprar descuenta el total
-  del balance de la cuenta elegida; vender lo acredita de vuelta. El precio
-  usado es el real de CoinGecko que el usuario ve en pantalla. Las
+  ticker de cripto y en cada posición abierta. El precio usado es el real
+  de CoinGecko que el usuario ve en pantalla. **Ya no se ejecuta al
+  instante** (ver "Aprobación manual" más abajo): la operación queda
+  "pendiente" y recién descuenta/acredita el balance y crea/actualiza la
+  posición cuando Lucas la aprueba desde el panel de administrador. Las
   posiciones abiertas muestran cantidad, precio de compra, precio actual y
   P/L recalculado en vivo cada vez que el ticker se actualiza.
+- **Aprobación manual de depósitos, retiros, compras y ventas** (pivote
+  importante sobre la v1 original): a pedido explícito de Lucas, ninguna de
+  estas cuatro acciones se ejecuta sola — todas quedan "en revisión" hasta
+  que él las aprueba (tal cual, o editando el monto/cantidad/precio final
+  antes de confirmar) o las rechaza. Solo el login/registro sigue siendo
+  instantáneo.
+  - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
+    asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
+    elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
+    monto final antes de confirmar — recién ahí se mueve el balance. Al
+    rechazar, no pasa nada más (queda con estado `rechazado`).
+  - **Compras y ventas**: al crearse quedan con estado `pendiente` y no
+    tocan el balance ni las posiciones todavía. Al aprobar, Lucas puede
+    editar la cantidad y/o el precio final antes de confirmar — recién ahí
+    se descuenta/acredita el balance y se crea/actualiza/cierra la
+    posición (estado pasa a `aprobada`). Al rechazar, no pasa nada más
+    (estado `rechazada`).
+  - **Panel de administrador** (`admin.html`): pantalla separada,
+    protegida en dos capas — primero el código de acceso general del
+    sitio, y además su propio código de administrador (`ADMIN_CODE`, ver
+    más abajo) que solo Lucas conoce. Muestra tres colas (Depósitos
+    pendientes / Retiros pendientes / Compras y ventas pendientes), cada
+    una con los campos editables y botones Aprobar/Rechazar. Se refresca
+    sola cada 15 segundos — Lucas eligió revisar el panel él mismo en vez
+    de recibir avisos por correo/SMS.
+  - **Historial de operaciones** (dashboard del usuario): tabla nueva que
+    muestra cada compra/venta con su estado (Pendiente / Aprobada /
+    Rechazada) — así el usuario ve en qué quedó su solicitud, ya que el
+    balance y las posiciones no cambian hasta que se aprueba.
+  - **Fuera de alcance por ahora**: el panel Sube/Baja (sección 14) sigue
+    resolviéndose solo, al instante, contra el precio real de CoinGecko
+    cuando vence el tiempo — no se llevó a este flujo de aprobación manual
+    porque su ventana de vencimiento (30s a 5min) es demasiado corta para
+    una revisión manual. Esto no fue pedido explícitamente por Lucas y
+    debe confirmarse con él si también debería requerir aprobación.
+- **Código de acceso del sitio** (`SITE_ACCESS_CODE`): bloqueo general,
+  independiente del login de usuarios, para que el sitio público no quede
+  abierto a cualquiera mientras Lucas es el único probándolo. Si la
+  variable de entorno `SITE_ACCESS_CODE` está configurada en el backend,
+  toda página (excepto la pantalla que pide el código) exige un código
+  compartido antes de dejar pasar — una vez ingresado, se guarda en el
+  navegador por 180 días. Si la variable no está configurada, este
+  bloqueo queda completamente desactivado (no afecta a nadie).
+- **Código de administrador** (`ADMIN_CODE`): segunda capa de acceso,
+  independiente y encima de la anterior, exclusiva para `admin.html`. Sin
+  esta variable configurada en el backend, el panel de administrador
+  responde que no está disponible.
 - Cambiar contraseña disponible desde el **menú de usuario** en la barra
   superior (requiere la contraseña actual) — ver nota más abajo.
 - Los comprobantes de depósito/retiro muestran un número de referencia
@@ -87,16 +136,109 @@ así no hay que repetir el contexto en cada conversación.
   900px a 1920px de ancho). Por debajo de 860px el panel izquierdo
   completo se oculta (comportamiento ya existente, no solo la lluvia).
 
+- **Registro extendido + Términos y condiciones (agosto 2026)**: el
+  formulario de "Abrir una cuenta" ahora pide, además de usuario y
+  contraseña, **nombre completo**, **correo** y **número de celular**
+  (los tres son obligatorios y se validan en el backend: correo con
+  formato válido, celular con al menos 7 dígitos). Antes de crear la
+  cuenta aparece un popup de **Términos y condiciones** con un resumen
+  breve (esto es un simulador, ningún depósito/retiro/compra/venta mueve
+  dinero real, todo queda sujeto a revisión manual) y una casilla
+  "Acepto los términos y condiciones" — el botón "Crear cuenta" del popup
+  queda deshabilitado hasta que se marca la casilla. El backend guarda
+  `termsAcceptedAt` y rechaza el registro si `acceptedTerms` no llega en
+  `true`. El login ahora devuelve el perfil completo del usuario (no solo
+  `id`/`username`).
+- **"Mi perfil" (reemplaza el antiguo botón suelto "Cambiar contraseña")**:
+  desde el menú de usuario, "Mi perfil" abre un modal con foto/inicial,
+  nombre y correo arriba, y tres pestañas:
+  - **Datos personales**: teléfono, fecha de nacimiento y dirección de
+    vivienda, editables y guardados vía `PUT /api/auth/profile`.
+  - **Documentos**: el usuario puede adjuntar PDFs (hasta 10 MB cada uno)
+    cuando Zenith le pida algún documento — se suben en base64, se validan
+    en el servidor (extensión `.pdf` + primeros bytes `%PDF`) y se guardan
+    en disco (`data/uploads/`, fuera del repo). Cada documento se puede
+    descargar de nuevo desde la misma pestaña. El panel de administrador
+    (`admin.html`) tiene su propia vista de solo lectura de **todos** los
+    documentos de **todos** los usuarios, para revisión.
+    > Mismo cuidado de seguridad que ya estaba anotado en la sección 9:
+    > el mecanismo ya soporta subir cualquier PDF, pero sigue sin ser un
+    > flujo de verificación de identidad real — no se debe pedir ni subir
+    > documentos de identidad reales de nadie a través de esto.
+    > Nota de infraestructura: igual que `data/data.json`, estos PDFs
+    > viven en el disco del backend — en Render (plan gratuito, sin disco
+    > persistente contratado) un redeploy los borra igual que borraría la
+    > base de datos. No pasa nada si ninguna de las dos cosas necesita
+    > sobrevivir a un redeploy todavía; si en algún momento sí hace falta,
+    > la solución es la misma para ambas: un "persistent disk" de Render.
+  - **Contraseña**: el cambio de contraseña que antes vivía suelto en la
+    barra superior — misma lógica de antes, ahora es una pestaña más.
+- **Insignias Zenith (Bronce / Plata / Oro / Diamante / Platino)**: junto
+  al nombre de usuario (arriba a la derecha) aparece una insignia
+  coloreada según cuánto tiene el cliente **invertido ahora mismo**
+  (balance de todas sus cuentas + valor de mercado de sus posiciones
+  abiertas a precio en vivo de CoinGecko) — **no** es un acumulado
+  histórico de todo lo que alguna vez depositó, así que puede subir o
+  bajar de insignia con el tiempo si su inversión sube o baja. Umbrales:
+  Bronce desde $250, Plata desde $800, Oro desde $1.500, Diamante desde
+  $5.000, Platino desde $10.000 (por debajo de $250 se muestra "★ Zenith
+  Investor" sin insignia todavía). Cada nivel tiene su propio color tanto
+  en la insignia como en el avatar del usuario. El cálculo se recalcula
+  solo, en el navegador, cada vez que cambian las cuentas, las posiciones
+  o el ticker de precios.
+- **Comunidad Zenith (`community.html`)**: página nueva, accesible desde
+  un banner en el dashboard, con un feed de chat **simulado** entre 10
+  clientes certificados ficticios (2 de cada insignia) comentando sobre
+  el mercado y la plataforma. Los mensajes se generan solos en el
+  servidor con un ritmo realista (no hace falta que nadie esté
+  conectado para que seudo-avancen: al entrar cualquiera, el backend
+  calcula cuántos mensajes "deberían" existir ya según el tiempo pasado
+  y los agrega) y el feed se refresca cada 8 segundos. Aviso permanente
+  al pie de página aclarando que es una comunidad simulada, no personas
+  reales.
+- **Detalle de inversión por posición**: cada fila de "Posiciones
+  abiertas" tiene un botón "Detalles" que abre un modal con cantidad,
+  precio de compra, precio actual, inversión inicial ($), valor actual
+  ($), ganancia/pérdida ($ y %) y el historial de operaciones filtrado a
+  ese activo — para que el usuario pueda ver de un vistazo si ganó o
+  perdió y cuánto, sin tener que hacer cuentas.
+- **Asesoría IA (Diamante y Platino)**: sección nueva en el dashboard,
+  visible solo para usuarios con insignia Diamante o Platino, que genera
+  (vía OpenAI) sugerencias educativas de qué considerar en las próximas
+  operaciones según las posiciones actuales y el mercado. **Nunca
+  ejecuta nada sola** — son solo recomendaciones de texto; si el usuario
+  decide actuar sobre ellas, tiene que pasar por el mismo botón
+  COMPRAR/VENDER de siempre, que a su vez sigue quedando pendiente de
+  aprobación manual como el resto de las operaciones (ver "Aprobación
+  manual" arriba). Por seguridad, el umbral de acceso también se valida
+  en el servidor (con un cálculo de inversión equivalente al del
+  frontend, aunque no idéntico byte a byte porque el backend no tiene
+  acceso a precios en vivo de mercado) para que nadie lo desbloquee con
+  un simple cambio en el navegador.
+- **Animación "invest-rain" — rediseño estilo Matrix (agosto 2026)**: la
+  versión anterior (símbolos rebotando como monedas en una franja angosta
+  a la derecha del texto) se reemplazó por una lluvia estilo Matrix
+  clásica: columnas de pared a pared de todo el panel izquierdo (antes
+  confinada a un costado), muchas más figuras cayendo, más rápido, cada
+  columna con un carácter "cabeza" brillante (con destello/glow en tonos
+  dorado o azul de marca, no verde) seguido de una estela que se
+  desvanece — mismo vocabulario visual de antes (`$`, `₿`, `Ξ`, `%`, `▲`,
+  `▼` y tickers como BTC/ETH/SOL/...). Para que el texto que queda encima
+  (título, tarjetas de confianza, tarjeta de IA) se siga leyendo bien, la
+  lluvia se atenúa (no desaparece del todo) justo en esa zona.
+
 > Pendiente de esta misma sección 10 (no bloqueante): un *ledger* unificado
 > que junte depósitos + retiros + compras + ventas + operaciones Sube/Baja
-> en una sola vista de historial — hoy cada uno vive en su propia tabla
-> (`trades`/`options` sí quedan registrados en el backend, pero todavía no
-> tienen una pantalla unificada). El panel de activos personalizados
-> (sección 11) y los widgets de "actividad de mercado" (sección 12) siguen
-> sin construir. La "mejor construcción de los botones" pedida por Lucas se
-> aplicó de forma puntual (iconos en los botones principales del dashboard,
-> banner de acceso al panel de trading, botones SUBE/BAJA grandes) — el
-> rediseño visual general sigue pendiente como tarea aparte.
+> en una sola vista de historial — hoy cada uno vive en su propia tabla del
+> dashboard (Depósitos / Retiros / Historial de operaciones para compras y
+> ventas); `options` (Sube/Baja) sí queda registrado en el backend pero
+> todavía no tiene su propia tabla de historial en el dashboard principal
+> (vive aparte, debajo del panel de trading). Los widgets de "actividad de
+> mercado" (sección 12) siguen sin construir. La "mejor construcción de los
+> botones" pedida por Lucas se aplicó de forma puntual (iconos en los
+> botones principales del dashboard, banner de acceso al panel de trading,
+> botones SUBE/BAJA grandes) — el rediseño visual general sigue pendiente
+> como tarea aparte.
 
 Todo lo que sigue es la especificación objetivo — se construye por fases
 (ver "Roadmap" al final), no de una sola vez.
@@ -242,17 +384,25 @@ Market conditions: Moderate risk
 Siempre mostrando el razonamiento (los datos de entrada), no solo la
 conclusión.
 
-## 9. Perfil
+## 9. Perfil — construido (agosto 2026)
 
-- Información personal.
-- Verificación.
-- Documentos.
+- [x] Información personal: nombre completo, correo y celular se piden en
+      el registro; fecha de nacimiento y dirección se editan después
+      desde "Mi perfil" → pestaña "Datos personales" (ver "Estado
+      actual" arriba para el detalle completo).
+- [x] Documentos: pestaña "Documentos" en el mismo modal — subir y
+      descargar PDFs, con vista de administrador para revisar los de
+      todos los usuarios.
+- [ ] Verificación: todavía no existe un flujo de verificación en sí
+      (aprobar/rechazar un documento, marcar a un usuario como
+      "verificado", etc.) — hoy los documentos solo se guardan y se
+      pueden ver/descargar, nadie los "aprueba" formalmente todavía.
 
-> Nota de seguridad para cuando lleguemos a esta fase: aunque el flujo se
-> construya, no se deben subir ni almacenar documentos de identidad reales
-> — se simula con cualquier archivo de prueba. Guardar identificaciones
-> reales de forma insegura es un riesgo real aunque el resto de la app sea
-> una simulación.
+> Nota de seguridad (sigue vigente): aunque el flujo de documentos ya
+> está construido, no se deben subir ni almacenar documentos de identidad
+> reales — se simula con cualquier archivo de prueba. Guardar
+> identificaciones reales de forma insegura es un riesgo real aunque el
+> resto de la app sea una simulación.
 
 ---
 
@@ -320,8 +470,11 @@ Marcar con [x] cuando una fase quede terminada.
       tendencia con el razonamiento visible (no solo la conclusión).
 - [ ] **Fase 6 — Producto de inversión**: página de detalle de la
       estrategia (riesgo, comisiones, metodología).
-- [ ] **Fase 7 — Perfil + verificación**: datos personales y flujo de
-      verificación simulado (sin procesar documentos reales).
+- [x] **Fase 7 (parcial) — Perfil**: datos personales (nombre, correo,
+      celular, fecha de nacimiento, dirección) y subida/descarga de
+      documentos PDF ya construidos (ver sección 9). Falta el flujo de
+      **verificación** en sí (aprobar/rechazar un documento, marcar a un
+      usuario como verificado).
 
 Depósitos v1 y Retiros v1 (ya construidos) se revisan y extienden en la
 Fase 0/3 para que sus estados coincidan con el resto del ledger.
@@ -329,8 +482,11 @@ Fase 0/3 para que sus estados coincidan con el resto del ledger.
 ## 10. Compra y venta (motor de trading simulado)
 
 - Botón **COMPRAR** en verde, botón **VENDER** en rojo.
-- Comprar descuenta el valor de la operación del saldo disponible de la
-  cuenta. Vender acredita el valor correspondiente de vuelta al saldo.
+- La solicitud queda **pendiente de aprobación** (ver "Aprobación manual"
+  en "Estado actual"): no descuenta ni acredita el saldo de inmediato.
+  Recién al aprobarse desde el panel de administrador se mueve el balance
+  de la cuenta y se crea/actualiza/cierra la posición — con la cantidad y
+  el precio que Lucas deje (puede ser el solicitado o uno editado).
 - Se opera sobre precios reales del ticker de cripto (CoinGecko) — el
   movimiento de precio que mueve la ganancia/pérdida es real, no inventado.
 - Posiciones abiertas visibles con: activo, cantidad, precio de compra,
@@ -340,25 +496,28 @@ Fase 0/3 para que sus estados coincidan con el resto del ledger.
   globales. Es exactamente la **Fase 0** del roadmap: holdings + ledger
   unificado. Todo lo demás de esta sección se construye sobre eso.
 
-## 11. Panel de activos personalizados (demo/admin)
+## 11. Panel de administrador — cola de aprobación (construido)
 
-Para que la cuenta demo se sienta como un simulador completo tipo IQ
-Option, además de los activos de cripto reales:
+> Esta sección reemplaza una idea anterior ("panel de activos
+> personalizados/monedas propias" con precio editable a mano) que Lucas
+> pidió explícitamente descartar antes de construirse del todo: no quería
+> inventar una moneda propia, sino poder revisar y editar el monto final
+> de las acciones reales de los usuarios (depósito, retiro, compra, venta)
+> antes de que se apliquen. Lo que sigue es lo que se construyó en su
+> lugar — ver el detalle completo en "Aprobación manual..." dentro de
+> "Estado actual", arriba.
 
-- Crear activos nuevos (nombre, símbolo, precio inicial).
-- Editar nombre, precio y otras características de un activo existente.
-- Simular manualmente que el precio de un activo sube o baja — control
-  directo, sin depender de un mercado real detrás.
-- Las posiciones abiertas sobre esos activos reflejan automáticamente la
-  ganancia/pérdida según el precio simulado (mismo motor de la sección 10).
-- Se compran/venden con el mismo saldo virtual que los activos reales.
-- Todo elemento de un activo personalizado debe decir claramente
-  "Simulado" / "Demo" para no confundirse con un activo real.
-
-> Nota de secuencia: la sección 10 (comprar/vender con precios reales de
-> cripto) se construye primero porque no depende de un panel nuevo — solo
-> del motor de holdings. El panel de activos personalizados de esta
-> sección se agrega después, reutilizando el mismo motor de compra/venta.
+- Pantalla `admin.html`, separada del login normal de usuarios, protegida
+  por el código de acceso del sitio y además por su propio código de
+  administrador (`ADMIN_CODE`).
+- Tres colas: Depósitos pendientes, Retiros pendientes, Compras y ventas
+  pendientes — cada ítem muestra quién lo pidió, los datos originales, y
+  campos editables (monto para depósitos/retiros, cantidad y precio para
+  compras/ventas) antes de Aprobar o Rechazar.
+- Para depósitos/retiros, además hay que elegir a qué cuenta del usuario
+  va (o de cuál sale) — no se asigna sola.
+- Se refresca sola cada 15 segundos mientras está abierta (sin avisos por
+  correo/SMS — Lucas prefiere revisar el panel él mismo).
 
 ## 12. Actividad de mercado (elementos para incentivar el uso)
 
@@ -406,6 +565,64 @@ con retorno esperado. Decisiones confirmadas con Lucas:
   vive en un solo lugar.
 - Pendiente futuro (no bloqueante): sumar esta actividad al ledger
   unificado cuando se construya (ver nota en "Estado actual").
+
+## 15. Insignias Zenith, Comunidad y Asesoría IA — construido (agosto 2026)
+
+Resumen de la especificación completa (ver también "Estado actual" arriba
+para la descripción orientada al usuario).
+
+### 15.1 Insignias (Bronce / Plata / Oro / Diamante / Platino)
+
+- Umbrales sobre lo **invertido ahora mismo**: Bronce $250, Plata $800,
+  Oro $1.500, Diamante $5.000, Platino $10.000+.
+- "Invertido ahora mismo" = suma de los `balance` de todas las cuentas del
+  usuario + valor de mercado de sus posiciones abiertas. El valor de
+  mercado se calcula **dos veces, con datos distintos a propósito**:
+  - **En el frontend** (`dashboard.js`, `computeInvestedTotal()`): usa el
+    precio en vivo de CoinGecko cuando ya llegó (o el precio medio de
+    compra mientras tanto) — esto es lo que decide **qué insignia se
+    muestra** en pantalla, porque es lo más preciso y dinámico.
+  - **En el backend** (`data/store.js`, `getInvestedProxyByUser`): usa el
+    precio medio de compra (`avgPrice`) porque el servidor no tiene
+    acceso a precios de mercado en vivo — esto es solo un valor
+    **aproximado**, usado únicamente para una cosa: decidir en el
+    servidor si a un usuario le corresponde o no el acceso a la Asesoría
+    IA (sección 15.3), para que nadie lo desbloquee manipulando el
+    navegador. No se usa para decidir qué insignia mostrar.
+  - Es intencional que estos dos cálculos puedan diferir un poco entre sí
+    (uno usa precio en vivo, el otro precio de compra) — no es un bug.
+- Colores por nivel definidos en `styles.css` (`.rank-bronce`,
+  `.rank-plata`, `.rank-oro`, `.rank-diamante`, `.rank-platino`), aplicados
+  tanto a la insignia junto al nombre como al avatar del usuario.
+
+### 15.2 Comunidad Zenith
+
+- `community.html` + `GET /api/community/messages` (requiere sesión).
+- Roster fijo de 10 clientes ficticios (`data/community.js` en el
+  backend, duplicado en `community.js` del frontend solo para poder
+  pintar la lista completa de la barra lateral) — 2 de cada insignia.
+- Generación perezosa: no hay ningún proceso corriendo en segundo plano
+  (evita problemas si el servidor gratuito de Render se "duerme" por
+  inactividad) — cada vez que alguien pide los mensajes, el backend
+  calcula cuántos mensajes "deberían" haberse generado desde la última
+  vez según el tiempo transcurrido, y los agrega en ese momento.
+
+### 15.3 Asesoría IA (Diamante y Platino)
+
+- `POST /api/ai/advisory` (requiere sesión). Devuelve texto generado por
+  OpenAI con sugerencias sobre las posiciones actuales y el mercado.
+- **Alcance confirmado con Lucas**: solo recomendaciones en texto — nunca
+  ejecuta una operación automáticamente. Si el usuario quiere actuar
+  sobre una sugerencia, usa el flujo normal de COMPRAR/VENDER, que sigue
+  pasando por aprobación manual como cualquier otra operación (sección
+  10 / "Aprobación manual" en "Estado actual").
+- Gate de acceso: solo responde si `getInvestedProxyByUser` (ver 15.1)
+  da $5.000 o más (umbral de Diamante) — si no, `403`. Si el umbral se
+  cumple pero no hay `OPENAI_API_KEY` configurada, responde `503` (error
+  de configuración, no de permisos) — el frontend distingue ambos casos
+  y muestra el mensaje correspondiente.
+- No requiere ninguna variable de entorno nueva: reutiliza
+  `OPENAI_API_KEY`, ya usada por el "Análisis con IA" original.
 
 ## Restricciones de seguridad (no negociables)
 

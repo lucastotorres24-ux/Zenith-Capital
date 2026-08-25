@@ -23,12 +23,29 @@ function seedData() {
     nextHoldingId: 1,
     nextTradeId: 1,
     nextOptionId: 1,
-    users: [{ id: 1, username: 'demo', passwordHash: demoHash }],
+    nextDocumentId: 1,
+    nextCommunityMessageId: 1,
+    communityLastGeneratedAt: now,
+    communityMessages: [],
+    users: [
+      {
+        id: 1,
+        username: 'demo',
+        passwordHash: demoHash,
+        fullName: 'Usuario Demo',
+        email: 'demo@zenithcapital.test',
+        phone: '3000000000',
+        birthDate: null,
+        address: null,
+        termsAcceptedAt: now,
+      },
+    ],
     deposits: [],
     withdrawals: [],
     holdings: [],
     trades: [],
     options: [],
+    documents: [],
     accounts: [
       {
         id: 1,
@@ -114,6 +131,93 @@ function load() {
     data.nextOptionId = 1;
     migrated = true;
   }
+  // Fase de aprobación manual (depósitos/retiros/compras/ventas): las
+  // compras/ventas que ya existían de antes se crearon bajo el modelo
+  // viejo (se ejecutaban solas al instante), así que se marcan como ya
+  // aprobadas para no dejarlas atascadas "pendientes" sin que nadie las
+  // haya pedido revisar.
+  data.trades.forEach((t) => {
+    if (!t.status) {
+      t.status = 'aprobada';
+      t.resolvedAt = t.resolvedAt || t.createdAt;
+      migrated = true;
+    }
+  });
+  data.deposits.forEach((d) => {
+    if (d.accountId === undefined) {
+      d.accountId = null;
+      migrated = true;
+    }
+    if (d.resolvedAt === undefined) {
+      d.resolvedAt = null;
+      migrated = true;
+    }
+  });
+  data.withdrawals.forEach((w) => {
+    if (w.accountId === undefined) {
+      w.accountId = null;
+      migrated = true;
+    }
+    if (w.resolvedAt === undefined) {
+      w.resolvedAt = null;
+      migrated = true;
+    }
+  });
+
+  // Perfil extendido (nombre completo, teléfono, correo, fecha de
+  // nacimiento, dirección, términos y condiciones): las cuentas que ya
+  // existían de antes del registro extendido no tienen estos campos —
+  // se completan con valores vacíos para no romper nada. `termsAcceptedAt`
+  // se deja con la fecha de creación de la cuenta como aproximación
+  // razonable (se registraron antes de que existiera el checkbox).
+  data.users.forEach((u) => {
+    if (u.fullName === undefined) {
+      u.fullName = u.username;
+      migrated = true;
+    }
+    if (u.email === undefined) {
+      u.email = '';
+      migrated = true;
+    }
+    if (u.phone === undefined) {
+      u.phone = '';
+      migrated = true;
+    }
+    if (u.birthDate === undefined) {
+      u.birthDate = null;
+      migrated = true;
+    }
+    if (u.address === undefined) {
+      u.address = null;
+      migrated = true;
+    }
+    if (u.termsAcceptedAt === undefined) {
+      u.termsAcceptedAt = null;
+      migrated = true;
+    }
+  });
+
+  if (!Array.isArray(data.documents)) {
+    data.documents = [];
+    migrated = true;
+  }
+  if (typeof data.nextDocumentId !== 'number') {
+    data.nextDocumentId = 1;
+    migrated = true;
+  }
+  if (typeof data.communityLastGeneratedAt !== 'string') {
+    data.communityLastGeneratedAt = new Date().toISOString();
+    migrated = true;
+  }
+  if (!Array.isArray(data.communityMessages)) {
+    data.communityMessages = [];
+    migrated = true;
+  }
+  if (typeof data.nextCommunityMessageId !== 'number') {
+    data.nextCommunityMessageId = 1;
+    migrated = true;
+  }
+
   if (migrated) save(data);
 
   return data;
