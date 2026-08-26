@@ -55,6 +55,24 @@ function findUserByUsername(username) {
   return db.users.find((u) => u.username === username) || null;
 }
 
+// El correo se guarda tal cual lo escribió la persona, pero se compara sin
+// importar mayúsculas/minúsculas — así "Ana@Gmail.com" y "ana@gmail.com"
+// cuentan como el mismo correo, tanto para bloquear registros duplicados
+// como para poder iniciar sesión con el correo.
+function findUserByEmail(email) {
+  if (!email) return null;
+  const db = load();
+  const target = String(email).trim().toLowerCase();
+  return db.users.find((u) => (u.email || '').trim().toLowerCase() === target) || null;
+}
+
+// A pedido de Lucas: se puede iniciar sesión escribiendo el usuario O el
+// correo con el que se registró la cuenta — esta función busca por
+// cualquiera de los dos, lo que sea que haya escrito la persona.
+function findUserByUsernameOrEmail(identifier) {
+  return findUserByUsername(identifier) || findUserByEmail(identifier);
+}
+
 function createUser({ username, passwordHash, fullName, email, phone, termsAcceptedAt }) {
   const db = load();
   const user = {
@@ -1177,6 +1195,8 @@ function getAllUsersAdminView() {
 
 module.exports = {
   findUserByUsername,
+  findUserByEmail,
+  findUserByUsernameOrEmail,
   createUser,
   getAccountsByUser,
   getAccountById,

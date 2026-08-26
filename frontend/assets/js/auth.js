@@ -28,6 +28,14 @@ document.addEventListener('DOMContentLoaded', () => {
     errorBox.classList.remove('is-visible');
   }
 
+  // Si api.js nos mandó para acá porque la sesión ya había vencido (ver
+  // api.js), se lo avisamos a la persona en vez de dejarla adivinar por
+  // qué de repente volvió a ver el login.
+  if (sessionStorage.getItem('zenith_session_expired') === '1') {
+    sessionStorage.removeItem('zenith_session_expired');
+    showError('Tu sesión anterior expiró — inicia sesión de nuevo.');
+  }
+
   function activateTab(name) {
     hideError();
     const isLogin = name === 'login';

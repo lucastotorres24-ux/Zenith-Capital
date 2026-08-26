@@ -1091,6 +1091,58 @@ cambio** (no solo el símbolo).
   externo de envío de correos — quedó fuera de esta tanda a propósito para
   no sumar una cuenta/costo externo más).
 
+## 21. Inicio de sesión con usuario o correo, correos duplicados, sesión más larga y buscador de cuentas en el admin (agosto 2026)
+
+- **Inicio de sesión con usuario O correo**: antes solo se podía escribir el
+  nombre de usuario. Ahora `POST /api/auth/login` acepta cualquiera de los
+  dos — `findUserByUsernameOrEmail` (`data/store.js`) prueba ambos. La
+  comparación del correo ignora mayúsculas/minúsculas.
+- **Correos duplicados bloqueados al registrarse**: como ahora se puede
+  entrar por correo, dos cuentas con el mismo correo generarían ambigüedad
+  sobre cuál de las dos abre. `POST /api/auth/register` ahora también
+  revisa `findUserByEmail` (antes solo revisaba el nombre de usuario) y
+  responde 409 si el correo ya está en uso.
+- **Mensajes de error distintos en login**: antes cualquier error devolvía
+  el mismo "Credenciales inválidas". Ahora, si la cuenta no existe,
+  responde 404 con un mensaje que invita a revisar los datos o registrarse;
+  si la cuenta existe pero la contraseña está mal, responde 401 con "La
+  contraseña no es correcta". (Nota: en un sitio con usuarios reales esto
+  se evita a propósito, porque permite a alguien probar qué correos están
+  registrados — para este proyecto de práctica, sin datos sensibles reales
+  de por medio, Lucas prefirió la claridad.)
+- **Sesión de 30 días en vez de 2 horas**: el JWT de login ahora expira en
+  `30d` en vez de `2h` (`routes/auth.js`). Esto resuelve un bug real: antes,
+  cuando el token vencía a las 2 horas, la persona se quedaba viendo el
+  dashboard como si nada (la sesión ya estaba cerrada de fondo, sin
+  avisarle), y la siguiente acción que intentara —por ejemplo, cambiar la
+  contraseña— fallaba con un error de token que no tenía nada que ver con
+  lo que estaba haciendo. Con una sesión mucho más larga, esto casi no
+  vuelve a pasar.
+- **Aviso claro cuando la sesión sí vence**: por si acaso vence o el token
+  queda inválido por otra razón, `assets/js/api.js` ahora detecta la
+  respuesta 401 de cualquier pedido autenticado, cierra la sesión local Y
+  manda de vuelta a `index.html`, donde `assets/js/auth.js` muestra "Tu
+  sesión anterior expiró — inicia sesión de nuevo" (vía `sessionStorage`,
+  una bandera de un solo uso). Antes solo se cerraba la sesión sin avisar
+  ni redirigir, dejando a la persona parada en una pantalla ya "muerta".
+- **Buscador en "Usuarios registrados" (panel de admin)**: una caja de
+  búsqueda arriba de la tabla (`admin.html`) filtra en vivo por usuario,
+  correo, nombre o celular (`assets/js/admin.js#matchesUserSearch`) — sin
+  pedirle nada nuevo al servidor, solo filtra lo que ya se cargó. Muestra
+  un contador "X de Y" mientras hay una búsqueda activa, y un mensaje de
+  "ninguna cuenta coincide" si no encuentra nada. La lista completa
+  (`usersCache`) nunca se pierde: el filtro es solo visual, así que el
+  refresco automático de cada 15 segundos sigue trayendo a todos.
+- **Términos y condiciones reescritos**: la sección de `index.html` ahora
+  explica qué es el trading y cómo funcionan los mercados reales (oferta y
+  demanda, noticias, bancos centrales), y enmarca la responsabilidad de la
+  persona sobre sus decisiones dentro de la plataforma — con un tono
+  serio, de plataforma real, en vez de sonar a "proyecto de práctica". Se
+  mantiene, en un solo punto de la lista (no repetido), que es un entorno
+  educativo de simulación y ninguna cifra es dinero real — ese punto es
+  la única línea roja que no se negoció en esta reescritura (ver
+  "Restricciones de seguridad" más abajo).
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

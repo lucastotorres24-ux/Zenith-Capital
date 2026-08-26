@@ -130,6 +130,13 @@
     showAdminGate();
   });
 
+  // Buscador de "Usuarios registrados": vuelve a dibujar la tabla con el
+  // mismo listado que ya se tenía guardado (usersCache), filtrado por lo
+  // que se va escribiendo — no hace falta pedirle nada al servidor.
+  document.getElementById('users-search-input').addEventListener('input', () => {
+    renderUsers(usersCache);
+  });
+
   // ---------------------------------------------------------------------
   // Cola de aprobación: depósitos, retiros, compras/ventas
   // ---------------------------------------------------------------------
@@ -522,22 +529,49 @@
     `;
   }
 
+  // Búsqueda del panel de admin: filtra por usuario, correo o nombre. Se
+  // guarda siempre la lista COMPLETA en usersCache (la que manda el
+  // servidor) — el filtro solo afecta lo que se dibuja en pantalla, así
+  // que al escribir/borrar la búsqueda no se pierde nada, y el refresco
+  // automático de cada 15s sigue trayendo a todos los usuarios.
+  function matchesUserSearch(u, query) {
+    const haystack = [u.username, u.email, u.fullName, u.phone]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(query);
+  }
+
   function renderUsers(users) {
     usersCache = users;
     const empty = document.getElementById('users-empty');
+    const searchEmpty = document.getElementById('users-search-empty');
     const table = document.getElementById('users-table');
     const body = document.getElementById('users-table-body');
-    document.getElementById('users-count').textContent = String(users.length);
+    const searchInput = document.getElementById('users-search-input');
+    const query = (searchInput?.value || '').trim().toLowerCase();
+    const visibleUsers = query ? users.filter((u) => matchesUserSearch(u, query)) : users;
+
+    document.getElementById('users-count').textContent =
+      query ? `${visibleUsers.length} de ${users.length}` : String(users.length);
 
     if (users.length === 0) {
       empty.style.display = 'flex';
+      searchEmpty.style.display = 'none';
+      table.style.display = 'none';
+      return;
+    }
+    if (visibleUsers.length === 0) {
+      empty.style.display = 'none';
+      searchEmpty.style.display = 'flex';
       table.style.display = 'none';
       return;
     }
     empty.style.display = 'none';
+    searchEmpty.style.display = 'none';
     table.style.display = 'table';
 
-    body.innerHTML = users
+    body.innerHTML = visibleUsers
       .map((u) => {
         const totalBalance = u.accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
         const accountsText =

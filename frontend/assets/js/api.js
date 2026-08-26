@@ -164,8 +164,19 @@ const Api = {
     const data = await res.json().catch(() => ({}));
 
     if (res.status === 401 && auth) {
-      // Token vencido o inválido: cierra sesión localmente.
+      // Token vencido o inválido: cierra la sesión localmente. Antes esto
+      // dejaba a la persona parada en la misma pantalla sin avisarle nada
+      // — la sesión ya estaba cerrada de fondo, pero ella seguía viendo el
+      // dashboard como si nada, y la siguiente acción que intentara (por
+      // ejemplo, cambiar la contraseña) fallaba con un error de "token"
+      // que no tenía nada que ver con lo que estaba haciendo. Ahora se le
+      // avisa y se le manda de vuelta al login, salvo que ya esté ahí.
       this.clearSession();
+      const onLoginPage = /(^|\/)index\.html$/.test(window.location.pathname) || window.location.pathname === '/';
+      if (!onLoginPage) {
+        sessionStorage.setItem('zenith_session_expired', '1');
+        window.location.href = 'index.html';
+      }
     }
     if (res.status === 403 && site && path !== '/api/access/verify') {
       // El código de acceso del sitio guardado ya no es válido: se borra

@@ -93,9 +93,22 @@
       <span class="badge" id="users-count">0</span>
     </div>
     <div class="section-body">
+      <div class="field" style="max-width:360px; margin-bottom:14px;">
+        <label for="users-search-input">Buscar cuenta</label>
+        <input
+          type="text"
+          id="users-search-input"
+          placeholder="Escribe un usuario, correo o nombre..."
+          autocomplete="off"
+        />
+      </div>
       <div class="empty-state" id="users-empty">
         <div class="icon">👥</div>
         <div>Todavía no hay ningún usuario registrado.</div>
+      </div>
+      <div class="empty-state" id="users-search-empty" style="display:none;">
+        <div class="icon">🔎</div>
+        <div>Ninguna cuenta coincide con esa búsqueda.</div>
       </div>
       <div style="overflow-x:auto;">
         <table class="ticker-table" id="users-table" style="display:none;">

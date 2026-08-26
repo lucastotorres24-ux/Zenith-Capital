@@ -5,6 +5,8 @@ const rateLimit = require('express-rate-limit');
 const dns = require('dns');
 const {
   findUserByUsername,
+  findUserByEmail,
+  findUserByUsernameOrEmail,
   createUser,
   findUserById,
   updateUserPassword,
@@ -74,6 +76,15 @@ const authLimiter = rateLimit({
 router.use(authLimiter);
 
 // POST /api/auth/login
+// A pedido de Lucas: se acepta tanto el usuario como el correo con el que
+// la persona se registró — findUserByUsernameOrEmail prueba ambos. Y en
+// vez de un solo mensaje genérico para cualquier error, se distingue
+// "esa cuenta no existe" (invita a registrarse) de "la contraseña está
+// mal" — en un sitio de práctica sin datos sensibles reales de por medio,
+// esa claridad vale más que ocultar cuál de las dos cosas falló (que es
+// lo que sí conviene en un sitio con usuarios reales, para que nadie
+// pueda usar el mensaje de error para adivinar qué correos están
+// registrados).
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
 
@@ -81,20 +92,28 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
   }
 
-  const user = findUserByUsername(username);
+  const user = findUserByUsernameOrEmail(String(username).trim());
   if (!user) {
-    return res.status(401).json({ error: 'Credenciales inválidas' });
+    return res.status(404).json({
+      error: 'No encontramos ninguna cuenta con ese usuario o correo. Verifica que esté bien escrito, o crea una cuenta nueva.',
+    });
   }
 
   const passwordMatches = bcrypt.compareSync(password, user.passwordHash);
   if (!passwordMatches) {
-    return res.status(401).json({ error: 'Credenciales inválidas' });
+    return res.status(401).json({ error: 'La contraseña no es correcta. Inténtalo de nuevo.' });
   }
 
   const token = jwt.sign(
     { id: user.id, username: user.username },
     process.env.JWT_SECRET,
-    { expiresIn: '2h' }
+    // Sesión larga (30 días) a propósito: es un sitio de práctica sin
+    // datos financieros reales de por medio, así que no tiene sentido
+    // hacer que la gente vuelva a iniciar sesión cada 2 horas — eso solo
+    // generaba confusión (la sesión se cerraba sola de fondo y la
+    // siguiente acción, como cambiar la contraseña, fallaba con un error
+    // de "token" que no tenía nada que ver con la contraseña en sí).
+    { expiresIn: '30d' }
   );
 
   res.json({
@@ -140,6 +159,16 @@ router.post('/register', async (req, res) => {
     const exists = findUserByUsername(username);
     if (exists) {
       return res.status(409).json({ error: 'El usuario ya existe' });
+    }
+    // A pedido de Lucas: como ahora se puede iniciar sesión con el correo
+    // (además del usuario), dos cuentas con el mismo correo generarían
+    // ambigüedad sobre cuál de las dos entra al escribirlo — por eso el
+    // correo también tiene que ser único, no solo el usuario.
+    const emailExists = findUserByEmail(trimmedEmail);
+    if (emailExists) {
+      return res.status(409).json({
+        error: 'Ya existe una cuenta registrada con ese correo. Inicia sesión con ella, o usa un correo distinto.',
+      });
     }
 
     const passwordHash = bcrypt.hashSync(password, 10);
