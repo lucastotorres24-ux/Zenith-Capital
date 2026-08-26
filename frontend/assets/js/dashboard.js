@@ -58,6 +58,11 @@ const RANK_TIERS = [
 // Desde qué rango se habilita la asesoría IA para automatizar inversiones.
 const ADVISORY_MIN_RANK_KEY = 'diamante';
 
+// Misma paleta que valida el backend (routes/accounts.js) — una lista
+// cerrada de colores lindos para elegir, en vez de un selector de color
+// libre que después el servidor podría rechazar o reemplazar por sorpresa.
+const WALLET_COLORS = ['#3987e5', '#c98a3e', '#4fae5c', '#c65b8f', '#8a6fd1', '#e0574b', '#2fb7ad', '#b0a13a'];
+
 let accountsCache = [];
 let depositsCache = [];
 let withdrawalsCache = [];
@@ -418,12 +423,19 @@ function renderAccounts(accounts) {
     const pl = Number(account.equity) - Number(account.balance);
     const plUp = pl > 0;
     const plDown = pl < 0;
+    const walletColor = account.walletColor || '#3987e5';
+    const walletName = account.walletName || 'Mi Billetera';
 
     const card = document.createElement('div');
     card.className = 'account-card';
+    card.style.setProperty('--wallet-color', walletColor);
     card.innerHTML = `
       <div class="account-card-top">
-        <span class="account-number">${escapeHtml(account.accountNumber)}</span>
+        <span class="wallet-dot" style="background:${walletColor}"></span>
+        <div class="wallet-title">
+          <span class="wallet-name">${escapeHtml(walletName)}</span>
+          <span class="account-number">${escapeHtml(account.accountNumber)}</span>
+        </div>
         <span class="badge">${escapeHtml(account.accountType)}</span>
       </div>
       <div class="account-metrics">
@@ -446,6 +458,10 @@ function renderAccounts(accounts) {
           </div>
         </div>
       </div>
+      ${account.walletLink ? `
+      <div class="wallet-link-chip" data-action="copy-link" data-link="${escapeHtml(account.walletLink)}" title="Copiar enlace de la billetera">
+        <span>🔗 ${escapeHtml(account.walletLink)}</span>
+      </div>` : ''}
       <div class="account-actions">
         <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${account.id}">Editar</button>
         <button class="btn btn-danger btn-sm" data-action="delete" data-id="${account.id}">Eliminar</button>
@@ -460,6 +476,18 @@ function renderAccounts(accounts) {
   grid.querySelectorAll('[data-action="delete"]').forEach((btn) => {
     btn.addEventListener('click', () => handleDelete(Number(btn.dataset.id)));
   });
+  grid.querySelectorAll('[data-action="copy-link"]').forEach((chip) => {
+    chip.addEventListener('click', () => copyWalletLink(chip.dataset.link));
+  });
+}
+
+async function copyWalletLink(link) {
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast('Enlace de la billetera copiado', 'success');
+  } catch {
+    showToast('No se pudo copiar el enlace — cópialo manualmente', 'error');
+  }
 }
 
 function escapeHtml(str) {
@@ -472,12 +500,12 @@ async function handleDelete(id) {
   const account = accountsCache.find((a) => a.id === id);
   if (!account) return;
 
-  const confirmed = window.confirm(`¿Eliminar la cuenta ${account.accountNumber}? Esta acción no se puede deshacer.`);
+  const confirmed = window.confirm(`¿Eliminar la billetera "${account.walletName || account.accountNumber}" (${account.accountNumber})? Esta acción no se puede deshacer.`);
   if (!confirmed) return;
 
   try {
     await Api.deleteAccount(id);
-    showToast('Cuenta eliminada', 'success');
+    showToast('Billetera eliminada', 'success');
     loadAccounts();
   } catch (err) {
     showToast(err.message, 'error');
@@ -485,8 +513,24 @@ async function handleDelete(id) {
 }
 
 // ---------------------------------------------------------------------
-// Modal crear/editar cuenta
+// Modal crear/editar billetera
 // ---------------------------------------------------------------------
+
+let selectedWalletColor = WALLET_COLORS[0];
+
+function renderWalletColorPicker() {
+  const picker = document.getElementById('wallet-color-picker');
+  picker.innerHTML = WALLET_COLORS.map((color) => `
+    <button type="button" class="wallet-color-swatch ${color === selectedWalletColor ? 'is-selected' : ''}" data-color="${color}" style="background:${color}" aria-label="Elegir color ${color}"></button>
+  `).join('');
+  picker.querySelectorAll('.wallet-color-swatch').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedWalletColor = btn.dataset.color;
+      document.getElementById('wallet-color').value = selectedWalletColor;
+      picker.querySelectorAll('.wallet-color-swatch').forEach((b) => b.classList.toggle('is-selected', b === btn));
+    });
+  });
+}
 
 function wireModal() {
   const overlay = document.getElementById('account-modal');
@@ -498,30 +542,49 @@ function wireModal() {
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) closeModal();
   });
+  document.getElementById('wallet-link-copy').addEventListener('click', () => {
+    copyWalletLink(document.getElementById('wallet-link').value);
+  });
 
   form.addEventListener('submit', handleAccountSubmit);
 }
 
 function openCreateModal() {
-  document.getElementById('modal-title').textContent = 'Nueva cuenta';
+  document.getElementById('modal-title').textContent = 'Nueva billetera';
   document.getElementById('account-id').value = '';
   document.getElementById('account-form').reset();
-  // El balance y equity de una cuenta nueva siempre empiezan en 0 — solo
+  document.getElementById('wallet-name').value = 'Mi Billetera';
+  selectedWalletColor = WALLET_COLORS[0];
+  document.getElementById('wallet-color').value = selectedWalletColor;
+  renderWalletColorPicker();
+  // El enlace de la billetera se genera solo al crearla — todavía no existe.
+  document.getElementById('wallet-link-field').style.display = 'none';
+  // El balance y equity de una billetera nueva siempre empiezan en 0 — solo
   // Zenith Capital puede asignar saldo, desde el panel de administrador,
   // después de confirmar un depósito. Estos campos son de solo lectura.
   document.getElementById('account-balance').value = '';
   document.getElementById('account-equity').value = '';
   hideModalError();
   document.getElementById('account-modal').classList.add('is-visible');
-  document.getElementById('account-number').focus();
+  document.getElementById('wallet-name').focus();
 }
 
 function openEditModal(id) {
   const account = accountsCache.find((a) => a.id === id);
   if (!account) return;
 
-  document.getElementById('modal-title').textContent = `Editar ${account.accountNumber}`;
+  document.getElementById('modal-title').textContent = `Editar ${account.walletName || account.accountNumber}`;
   document.getElementById('account-id').value = account.id;
+  document.getElementById('wallet-name').value = account.walletName || 'Mi Billetera';
+  selectedWalletColor = account.walletColor || WALLET_COLORS[0];
+  document.getElementById('wallet-color').value = selectedWalletColor;
+  renderWalletColorPicker();
+  if (account.walletLink) {
+    document.getElementById('wallet-link-field').style.display = 'block';
+    document.getElementById('wallet-link').value = account.walletLink;
+  } else {
+    document.getElementById('wallet-link-field').style.display = 'none';
+  }
   document.getElementById('account-number').value = account.accountNumber;
   document.getElementById('account-number').disabled = true; // no se puede cambiar el número
   document.getElementById('account-type').value = account.accountType;
@@ -562,6 +625,8 @@ async function handleAccountSubmit(event) {
     accountType: document.getElementById('account-type').value,
     currency: document.getElementById('account-currency').value,
     leverage: document.getElementById('account-leverage').value,
+    walletName: document.getElementById('wallet-name').value.trim(),
+    walletColor: document.getElementById('wallet-color').value,
   };
 
   const submitBtn = document.getElementById('modal-submit');
@@ -570,10 +635,10 @@ async function handleAccountSubmit(event) {
   try {
     if (id) {
       await Api.updateAccount(Number(id), payload);
-      showToast('Cuenta actualizada', 'success');
+      showToast('Billetera actualizada', 'success');
     } else {
       await Api.createAccount(payload);
-      showToast('Cuenta creada', 'success');
+      showToast('Billetera creada', 'success');
     }
     closeModal();
     loadAccounts();
@@ -882,7 +947,7 @@ function openTradeModal(mode, assetId) {
     return;
   }
   if (accountsCache.length === 0) {
-    showToast('Crea una cuenta antes de operar.', 'error');
+    showToast('Crea una billetera antes de operar.', 'error');
     return;
   }
 
@@ -906,7 +971,7 @@ function openTradeModal(mode, assetId) {
 
   const accountSelect = document.getElementById('trade-account');
   accountSelect.innerHTML = accountsCache
-    .map((a) => `<option value="${a.id}">${escapeHtml(a.accountNumber)} · ${money(a.balance, a.currency)}</option>`)
+    .map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || a.accountNumber)} (${escapeHtml(a.accountNumber)}) · ${money(a.balance, a.currency)}</option>`)
     .join('');
 
   updateTradeTotal();

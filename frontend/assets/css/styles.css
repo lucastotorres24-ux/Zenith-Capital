@@ -1104,7 +1104,9 @@ a.brand:hover {
 }
 
 .account-card {
+  --wallet-color: #3987e5;
   border: 1px solid var(--border);
+  border-left: 3px solid var(--wallet-color);
   border-radius: var(--radius-md);
   padding: 16px;
   background: var(--surface-2);
@@ -1113,13 +1115,36 @@ a.brand:hover {
 .account-card-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
-.account-number {
+.wallet-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wallet-title {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.wallet-name {
   font-weight: 700;
   font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-number {
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1158,6 +1183,59 @@ a.brand:hover {
   gap: 4px;
   font-size: 12px;
   font-weight: 700;
+}
+
+/* Chip del enlace de la billetera, en la tarjeta del dashboard — clic para
+   copiar (ver copyWalletLink en dashboard.js). */
+.wallet-link-chip {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-3, var(--page-bg));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wallet-link-chip:hover {
+  border-color: var(--wallet-color, var(--accent));
+  color: var(--text-primary);
+}
+
+/* Selector de color de billetera (modal crear/editar) */
+.wallet-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+.wallet-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease;
+}
+.wallet-color-swatch:hover {
+  transform: scale(1.1);
+}
+.wallet-color-swatch.is-selected {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+.wallet-link-row {
+  display: flex;
+  gap: 8px;
+}
+.wallet-link-row input {
+  flex: 1;
 }
 
 .account-actions {

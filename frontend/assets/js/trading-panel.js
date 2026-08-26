@@ -122,6 +122,16 @@ let barDurationSeconds = 1800; // se recalcula con cada carga según el tamaño 
 let metalCandleCache = {};
 const METAL_BAR_SECONDS = 30;
 
+// Cuenta fallas seguidas al pedir el precio en vivo de cada metal a
+// gold-api.com, para poder distinguir "todavía no ha llegado el primer
+// precio" (normal, se resuelve solo en unos segundos) de "de verdad no se
+// puede conectar" (por ejemplo sin internet, o la API caída) — este segundo
+// caso antes fallaba en silencio total y dejaba el gráfico en blanco para
+// siempre, sin ningún aviso, lo cual se ve exactamente como un error de la
+// página aunque en realidad sea un problema de conexión con gold-api.com.
+let metalFailStreak = {};
+const METAL_FAIL_THRESHOLD = 3; // ~15 segundos de fallas seguidas (un ciclo de precio son 5s)
+
 // Caché del histórico real ya traído por activo+plazo, para que volver a
 // un activo que ya se visitó en esta sesión se vea al instante (en vez de
 // esperar otra vez a CoinGecko) mientras se refresca en segundo plano.
@@ -225,7 +235,7 @@ async function loadAccounts() {
     const select = document.getElementById('panel-account');
     const previousValue = select.value;
     select.innerHTML = accountsCache
-      .map((a) => `<option value="${a.id}">${escapeHtml(a.accountNumber)} · ${money(a.balance)}</option>`)
+      .map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || a.accountNumber)} (${escapeHtml(a.accountNumber)}) · ${money(a.balance)}</option>`)
       .join('');
     if (previousValue && accountsCache.some((a) => String(a.id) === previousValue)) {
       select.value = previousValue;
@@ -860,14 +870,18 @@ function updateLiveCandle(assetId, price) {
   if (!isHoveringChart) showLastCandleOhlc();
 }
 
-function showChartLoading(visible) {
+function showChartLoading(visible, text) {
   const overlay = document.getElementById('chart-loading-overlay');
-  if (overlay) overlay.classList.toggle('is-visible', visible);
+  if (!overlay) return;
+  overlay.classList.toggle('is-visible', visible);
+  if (visible && text) document.getElementById('chart-loading-text').textContent = text;
 }
 
-function showChartError(visible) {
+function showChartError(visible, text) {
   const overlay = document.getElementById('chart-error-overlay');
-  if (overlay) overlay.classList.toggle('is-visible', visible);
+  if (!overlay) return;
+  overlay.classList.toggle('is-visible', visible);
+  if (visible && text) document.getElementById('chart-error-text').textContent = text;
 }
 
 function clearOhlcBar() {
@@ -890,6 +904,7 @@ function clearOhlcBar() {
 function resetChartDisplay() {
   rawCandles = [];
   showChartError(false);
+  showChartLoading(false);
   if (priceSeries) priceSeries.setData([]);
   if (volumeSeries) volumeSeries.setData([]);
   if (smaFastSeries) smaFastSeries.setData([]);
@@ -910,10 +925,13 @@ function renderActiveCandles() {
 }
 
 // Los metales no tienen historial gratuito (ver nota arriba de METAL_META):
-// no hay nada que "cargar" — solo se muestra lo que ya se haya acumulado
-// en vivo para ese activo (posiblemente nada todavía, si se acaba de
-// seleccionar por primera vez en esta sesión). Esto es instantáneo, sin
-// pedidos de red, así que nunca necesita el overlay de carga.
+// no hay nada que "cargar" — solo se muestra lo que ya se haya acumulado en
+// vivo para ese activo. Si todavía no hay ninguna vela (primera vez que se
+// abre este metal en la sesión, o gold-api.com no ha respondido todavía),
+// en vez de dejar el gráfico completamente en blanco sin ninguna
+// explicación (lo cual se puede confundir fácilmente con "esto está roto"),
+// se muestra el mismo aviso de "cargando" que usan las criptomonedas, con
+// un texto propio, hasta que llegue el primer precio real.
 function loadMetalChartData(assetId) {
   if (!priceSeries) return;
   if (!metalCandleCache[assetId]) metalCandleCache[assetId] = { candles: [], barDurationSeconds: METAL_BAR_SECONDS };
@@ -921,6 +939,26 @@ function loadMetalChartData(assetId) {
   rawCandles = metalCandleCache[assetId].candles;
   barDurationSeconds = metalCandleCache[assetId].barDurationSeconds;
   renderActiveCandles();
+  updateMetalConnectionState();
+}
+
+function updateMetalConnectionState() {
+  if (PANEL_META[selectedAsset]?.category !== 'metal') return;
+  const hasData = (metalCandleCache[selectedAsset]?.candles.length || 0) > 0;
+  const failing = (metalFailStreak[selectedAsset] || 0) >= METAL_FAIL_THRESHOLD;
+
+  if (hasData) {
+    showChartLoading(false);
+    showChartError(false);
+    return;
+  }
+  if (failing) {
+    showChartLoading(false);
+    showChartError(true, 'No se pudo conectar con el precio en vivo de este metal (gold-api.com). Revisa tu conexión e intenta de nuevo.');
+  } else {
+    showChartError(false);
+    showChartLoading(true, 'Conectando con el precio en vivo…');
+  }
 }
 
 // chartLoadToken evita el "medio bug" de cambiar de activo rápido: si dos
@@ -1056,7 +1094,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
       showChartError(false);
-      loadChartData(selectedAsset, selectedTimeframe);
+      if (PANEL_META[selectedAsset]?.category === 'metal') {
+        // Los metales no tienen un "historial" que recargar — lo que hace
+        // falta es un intento nuevo de precio en vivo ya mismo, en vez de
+        // esperar hasta el próximo ciclo de 5 segundos.
+        metalFailStreak[selectedAsset] = 0;
+        showChartLoading(true, 'Conectando con el precio en vivo…');
+        pollPrices();
+      } else {
+        loadChartData(selectedAsset, selectedTimeframe);
+      }
     });
   }
 });
@@ -1079,10 +1126,13 @@ async function fetchCryptoPrices(ids) {
 async function fetchMetalPrice(id) {
   try {
     const res = await fetch(`https://api.gold-api.com/price/${PANEL_META[id].metalSymbol}`);
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error('status ' + res.status);
     const data = await res.json();
-    return typeof data.price === 'number' ? data.price : null;
+    if (typeof data.price !== 'number') throw new Error('precio inválido');
+    metalFailStreak[id] = 0;
+    return data.price;
   } catch {
+    metalFailStreak[id] = (metalFailStreak[id] || 0) + 1;
     return null;
   }
 }
@@ -1125,6 +1175,9 @@ async function pollPrices() {
     if (PANEL_META[selectedAsset]?.category !== 'metal') {
       updateLiveCandle(selectedAsset, currentPrices[selectedAsset]);
     }
+    // Revisa si el metal seleccionado (si hay uno) sigue "conectando", ya
+    // se conectó, o de plano no se pudo conectar tras varios intentos.
+    updateMetalConnectionState();
   } catch (err) {
     // Silencioso: se reintenta en el próximo ciclo.
   }

@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const {
   getAccountsByUser,
   getAccountById,
@@ -12,6 +13,32 @@ const router = express.Router();
 
 // Todas las rutas de aquí para abajo requieren estar logueado
 router.use(requireAuth);
+
+// Colores permitidos para personalizar una billetera — una lista cerrada en
+// vez de aceptar cualquier texto, para que nadie pueda meter CSS raro (o
+// cualquier otra cosa) en el campo de color desde la API directamente.
+const WALLET_COLORS = ['#3987e5', '#c98a3e', '#4fae5c', '#c65b8f', '#8a6fd1', '#e0574b', '#2fb7ad', '#b0a13a'];
+const DEFAULT_WALLET_COLOR = WALLET_COLORS[0];
+
+function sanitizeWalletName(name) {
+  const trimmed = String(name || '').trim().slice(0, 40);
+  return trimmed || 'Mi Billetera';
+}
+
+function sanitizeWalletColor(color) {
+  return WALLET_COLORS.includes(color) ? color : DEFAULT_WALLET_COLOR;
+}
+
+// Genera el "enlace" de la billetera: un identificador único y aleatorio con
+// formato de link, para que se sienta como la dirección de una billetera de
+// verdad. Es solo un identificador de referencia dentro de Zenith Capital —
+// no conecta con ningún banco real ni procesa transferencias por sí solo;
+// el dinero sigue llegando únicamente cuando el equipo de Zenith Capital
+// confirma un depósito manualmente, como siempre. Se genera una sola vez,
+// al crear la billetera, y no cambia después.
+function generateWalletLink() {
+  return `zenith-capital.app/wallet/${crypto.randomBytes(12).toString('hex')}`;
+}
 
 // GET /api/accounts -> lista las cuentas del usuario logueado
 router.get('/', (req, res) => {
@@ -37,7 +64,7 @@ router.get('/:id', (req, res) => {
 // (PUT /api/admin/accounts/:id/edit, protegido con ADMIN_CODE), normalmente
 // después de aprobar un depósito.
 router.post('/', (req, res) => {
-  const { accountNumber, accountType, currency, leverage } = req.body;
+  const { accountNumber, accountType, currency, leverage, walletName, walletColor } = req.body;
 
   if (!accountNumber || !accountType || !currency) {
     return res.status(400).json({
@@ -53,6 +80,9 @@ router.post('/', (req, res) => {
     balance: 0,
     equity: 0,
     leverage: leverage || '1:100',
+    walletName: sanitizeWalletName(walletName),
+    walletColor: sanitizeWalletColor(walletColor),
+    walletLink: generateWalletLink(),
   });
 
   res.status(201).json(newAccount);
@@ -66,13 +96,22 @@ router.post('/', (req, res) => {
 // la API directamente, sin pasar por el formulario), simplemente no pasa
 // nada con ellos. Cambiar el saldo real de una cuenta solo es posible desde
 // el panel de administrador.
+//
+// walletName y walletColor sí son editables aquí libremente: son solo
+// personalización visual de la billetera (cómo se llama, de qué color se ve
+// en el dashboard), no tienen ningún efecto sobre el saldo ni sobre las
+// operaciones, así que no representan el mismo riesgo. walletLink, en
+// cambio, no se puede cambiar: es un identificador fijo que se genera una
+// sola vez al crear la billetera, igual que un número de cuenta real.
 router.put('/:id', (req, res) => {
-  const { accountType, currency, leverage } = req.body;
+  const { accountType, currency, leverage, walletName, walletColor } = req.body;
 
   const fields = {};
   if (accountType !== undefined) fields.accountType = accountType;
   if (currency !== undefined) fields.currency = currency;
   if (leverage !== undefined) fields.leverage = leverage;
+  if (walletName !== undefined) fields.walletName = sanitizeWalletName(walletName);
+  if (walletColor !== undefined) fields.walletColor = sanitizeWalletColor(walletColor);
 
   const updated = updateAccount(Number(req.params.id), req.user.id, fields);
   if (!updated) return res.status(404).json({ error: 'Cuenta no encontrada' });
@@ -84,7 +123,7 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   const deleted = deleteAccount(Number(req.params.id), req.user.id);
   if (!deleted) return res.status(404).json({ error: 'Cuenta no encontrada' });
-  res.json({ message: 'Cuenta eliminada', account: deleted });
+  res.json({ message: 'Billetera eliminada', account: deleted });
 });
 
 module.exports = router;

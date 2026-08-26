@@ -118,10 +118,10 @@
       <div id="panel-chart-container"></div>
       <div id="chart-loading-overlay" class="chart-loading-overlay">
         <span class="chart-loading-spinner"></span>
-        <span>Actualizando gráfico…</span>
+        <span id="chart-loading-text">Actualizando gráfico…</span>
       </div>
       <div id="chart-error-overlay" class="chart-loading-overlay chart-error-overlay">
-        <span>No se pudo cargar el historial de este activo. Revisa tu conexión e intenta de nuevo.</span>
+        <span id="chart-error-text">No se pudo cargar el historial de este activo. Revisa tu conexión e intenta de nuevo.</span>
         <button type="button" id="chart-error-retry" class="chart-tool-btn">Reintentar</button>
       </div>
     </div>
@@ -142,21 +142,21 @@
   <aside class="panel-sidebar">
 
     <div class="panel-card">
-      <h3>Cuenta y monto</h3>
+      <h3>Billetera y monto</h3>
 
       <div id="panel-no-accounts" class="form-error" style="margin-bottom:16px;">
         <span>⚠</span>
-        <span>Todavía no tienes ninguna cuenta. <a href="dashboard.html" style="color:inherit; text-decoration:underline;">Crea una en el dashboard</a> para poder operar aquí.</span>
+        <span>Todavía no tienes ninguna billetera. <a href="dashboard.html" style="color:inherit; text-decoration:underline;">Crea una en el dashboard</a> para poder operar aquí.</span>
       </div>
 
       <div id="panel-no-funds" class="form-error" style="margin-bottom:16px;">
         <span>⚠</span>
-        <span>No tienes saldo disponible en esta cuenta todavía. Cuando el equipo de Zenith Capital confirme tu depósito, tu saldo aparecerá aquí y podrás comprar y vender con él.</span>
+        <span>No tienes saldo disponible en esta billetera todavía. Cuando el equipo de Zenith Capital confirme tu depósito, tu saldo aparecerá aquí y podrás comprar y vender con él.</span>
       </div>
 
       <div id="panel-account-fields">
         <div class="field">
-          <label for="panel-account">Cuenta</label>
+          <label for="panel-account">Billetera</label>
           <select id="panel-account"></select>
         </div>
         <div class="field" style="margin-bottom:0;">

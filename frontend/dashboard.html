@@ -85,11 +85,11 @@
 
   <div class="page-header">
     <div>
-      <h1>Resumen de cuentas</h1>
-      <p class="subtitle">Balance, equity y P/L flotante de todas tus cuentas de trading.</p>
+      <h1>Resumen de billeteras</h1>
+      <p class="subtitle">Balance, equity y P/L flotante de todas tus billeteras de trading.</p>
     </div>
     <div class="page-header-actions">
-      <button class="btn btn-secondary" id="open-create-account">+ Nueva cuenta</button>
+      <button class="btn btn-secondary" id="open-create-account">+ Nueva billetera</button>
       <button class="btn btn-secondary" id="open-withdraw-modal">🏦 RETIRAR</button>
       <button class="btn btn-primary" id="open-deposit-modal">💰 DEPOSITAR</button>
     </div>
@@ -130,7 +130,7 @@
     <div class="stat-tile">
       <div class="label">Balance total</div>
       <div class="value" id="stat-balance">—</div>
-      <span class="delta is-flat" id="stat-balance-note">Suma de todas las cuentas</span>
+      <span class="delta is-flat" id="stat-balance-note">Suma de todas tus billeteras</span>
     </div>
     <div class="stat-tile">
       <div class="label">Equity total</div>
@@ -143,7 +143,7 @@
       <span class="delta" id="stat-pl-delta">—</span>
     </div>
     <div class="stat-tile">
-      <div class="label">Cuentas activas</div>
+      <div class="label">Billeteras activas</div>
       <div class="value" id="stat-count">—</div>
       <span class="delta is-flat">En tu perfil</span>
     </div>
@@ -225,12 +225,12 @@
     </div>
   </section>
 
-  <!-- Cuentas -->
+  <!-- Billeteras -->
   <section class="section">
     <div class="section-header">
       <div>
-        <h2>Tus cuentas</h2>
-        <div class="subtitle">Crea, edita o elimina cuentas de práctica.</div>
+        <h2>Tus billeteras</h2>
+        <div class="subtitle">Crea, personaliza y administra tus billeteras de práctica.</div>
       </div>
     </div>
     <div class="section-body">
@@ -238,8 +238,8 @@
         <!-- se llena por JS -->
       </div>
       <div class="empty-state" id="accounts-empty" style="display:none;">
-        <div class="icon">📂</div>
-        <div>Todavía no tienes cuentas. Crea la primera con el botón de arriba.</div>
+        <div class="icon">👛</div>
+        <div>Todavía no tienes ninguna billetera. Crea la primera con el botón de arriba.</div>
       </div>
     </div>
   </section>
@@ -497,11 +497,11 @@
   </div>
 </footer>
 
-<!-- Modal crear/editar cuenta -->
+<!-- Modal crear/editar billetera -->
 <div class="modal-overlay" id="account-modal">
   <div class="modal">
     <div class="modal-header">
-      <h3 id="modal-title">Nueva cuenta</h3>
+      <h3 id="modal-title">Nueva billetera</h3>
       <button class="modal-close" id="modal-close" aria-label="Cerrar">✕</button>
     </div>
 
@@ -513,8 +513,35 @@
     <form id="account-form">
       <input type="hidden" id="account-id" />
 
+      <p class="helper-text" style="margin-top:0;">
+        Tu billetera es donde llega el dinero que envías desde tus bancos para comprar y vender
+        dentro de Zenith Capital. Personalízala como quieras — el nombre y el color son solo tuyos.
+      </p>
+
       <div class="field">
-        <label for="account-number">Número de cuenta</label>
+        <label for="wallet-name">Nombre de tu billetera</label>
+        <input id="wallet-name" placeholder="Mi Billetera" maxlength="40" required />
+      </div>
+
+      <div class="field">
+        <label>Color de tu billetera</label>
+        <div class="wallet-color-picker" id="wallet-color-picker">
+          <!-- se llena por JS -->
+        </div>
+        <input type="hidden" id="wallet-color" value="#3987e5" />
+      </div>
+
+      <div class="field" id="wallet-link-field" style="display:none;">
+        <label>Enlace de tu billetera</label>
+        <div class="wallet-link-row">
+          <input id="wallet-link" type="text" disabled />
+          <button type="button" class="btn btn-secondary btn-sm" id="wallet-link-copy">Copiar</button>
+        </div>
+        <span class="field-hint">Es el identificador de esta billetera dentro de Zenith Capital — no es una dirección bancaria real. El dinero solo se acredita cuando el equipo de Zenith Capital confirma tu depósito, como siempre.</span>
+      </div>
+
+      <div class="field">
+        <label for="account-number">Número de billetera</label>
         <input id="account-number" placeholder="EX-10004" required />
       </div>
 
@@ -549,7 +576,7 @@
         </div>
       </div>
       <p class="helper-text" style="margin-top:-8px;">
-        El saldo de tu cuenta lo asigna el equipo de Zenith Capital al confirmar tu primer depósito —
+        El saldo de tu billetera lo asigna el equipo de Zenith Capital al confirmar tu primer depósito —
         no se puede editar desde aquí. Podrás comprar, vender y operar usando ese saldo en cuanto
         aparezca.
       </p>
@@ -773,7 +800,7 @@
 
     <form id="trade-form">
       <div class="field">
-        <label for="trade-account">Cuenta</label>
+        <label for="trade-account">Billetera</label>
         <select id="trade-account" required></select>
       </div>
 

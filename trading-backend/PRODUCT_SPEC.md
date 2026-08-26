@@ -1378,6 +1378,83 @@ cambio** (no solo el símbolo).
   repetidas para confirmar que el aviso de error y el botón de Reintentar
   funcionan como se espera.
 
+## 26. Metales que "cargaban como con error", y las cuentas se convierten en Billeteras (agosto 2026)
+
+- **Reporte del usuario**: al intentar ver el gráfico de un metal (Oro,
+  Plata, Platino, Paladio o Cobre) en el panel de trading, la pantalla se
+  veía como si algo hubiera fallado.
+- **Causa real**: a diferencia de las criptomonedas, los metales no tienen
+  ningún historial gratuito disponible (ver sección 23) — su gráfico se
+  construye 100% en vivo, vela por vela, desde el momento en que se abren.
+  Si gold-api.com (la API gratuita que da el precio real de los metales)
+  tardaba en responder, fallaba, o el navegador no lograba conectarse por
+  cualquier motivo, antes no había NINGÚN aviso de esto: el gráfico se
+  quedaba completamente en blanco, con la barra de datos en "—" y sin
+  ninguna explicación — exactamente el tipo de pantalla que cualquiera
+  interpretaría como "esto está roto", aunque en realidad la plataforma
+  seguía funcionando bien y solo estaba esperando (o fallando en silencio)
+  una respuesta de una API externa.
+- **Corrección aplicada** (`assets/js/trading-panel.js`, `trading-panel.html`):
+  - Al elegir un metal por primera vez en la sesión, ahora aparece un aviso
+    claro de "Conectando con el precio en vivo…" (el mismo estilo que ya se
+    usa para criptomonedas) en vez de una pantalla en blanco sin
+    explicación — esto se resuelve solo, normalmente en unos segundos.
+  - Si gold-api.com falla varias veces seguidas (unos 15 segundos de
+    fallas continuas) sin lograr conectar ni una sola vez, ahora aparece un
+    mensaje explícito ("No se pudo conectar con el precio en vivo de este
+    metal. Revisa tu conexión e intenta de nuevo.") con un botón
+    "Reintentar" que pide el precio otra vez al instante, en vez de esperar
+    en silencio hasta el siguiente ciclo de 5 segundos.
+  - Se verificó de forma automatizada forzando fallas repetidas de
+    gold-api.com para un metal que nunca había cargado en la sesión,
+    confirmando que aparece el aviso correcto (y no una pantalla en blanco
+    sin explicación), y que el botón Reintentar recupera el gráfico en
+    cuanto la conexión vuelve a funcionar.
+
+- **De "Cuenta" a "Billetera"**: a pedido del usuario, quien encontraba
+  confuso el botón "Nueva cuenta", todo el flujo de creación y edición de
+  cuentas de trading se rediseñó como una **billetera** personal — el
+  mismo dato de siempre (mismo balance, mismo sistema de depósitos
+  aprobados manualmente, mismas reglas de seguridad), pero presentado de
+  forma más clara y personalizable, en el dashboard, en el panel de trading
+  y en el panel de administrador.
+  - **Nombre y color personalizables**: al crear o editar una billetera,
+    el usuario le pone el nombre que quiera (por ejemplo "Billetera
+    Principal" o "Ahorros para cripto") y elige un color de una paleta de
+    8 opciones — se ve como un punto de color y un acento en el borde de
+    la tarjeta de esa billetera en el dashboard. Estos dos campos son
+    completamente del usuario: se pueden cambiar cuando quiera, sin pasar
+    por el equipo de Zenith Capital, porque son solo personalización visual
+    y no afectan el saldo ni las operaciones.
+  - **Enlace de la billetera**: cada billetera recibe automáticamente, al
+    crearse, un identificador único con forma de enlace (por ejemplo
+    `zenith-capital.app/wallet/8f3a...`), visible y copiable con un botón
+    "Copiar" tanto en la tarjeta del dashboard como en el modal de edición.
+    Es importante ser honestos sobre qué es esto: es un identificador de
+    referencia dentro de Zenith Capital, para que la billetera se sienta
+    como la de una plataforma real — **no** es una cuenta bancaria ni un
+    enlace que conecte con ningún banco de verdad, y no procesa ninguna
+    transferencia por sí solo. El dinero real que la persona envía desde
+    sus bancos sigue llegando exactamente igual que antes: el equipo de
+    Zenith Capital confirma el depósito manualmente y recién ahí aparece el
+    saldo en la billetera. Esto se explica con todas las letras en el
+    propio formulario, junto al campo del enlace.
+  - **Nada de esto reabre la brecha de seguridad cerrada en la sección 23**:
+    balance y equity siguen siendo de solo lectura, tanto en el formulario
+    como en el servidor — se verificó de nuevo, llamando la API
+    directamente (sin pasar por el formulario) con un balance y hasta un
+    enlace de billetera inventados en el pedido, confirmando que el
+    servidor los ignora por completo y nunca se aplican.
+  - **Cuentas existentes de antes de esta actualización**: no se pierde
+    nada — al arrancar el servidor, cualquier cuenta que no tuviera todavía
+    nombre, color o enlace de billetera recibe automáticamente un nombre
+    por defecto ("Mi Billetera"), un color por defecto y un enlace nuevo,
+    sin necesidad de que el usuario haga nada.
+  - Se actualizó también el panel de trading (el selector ahora dice
+    "Billetera" y muestra el nombre elegido) y el panel de administrador
+    (columnas y menús ahora dicen "Billeteras"), para que la terminología
+    sea consistente en todo el sitio.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

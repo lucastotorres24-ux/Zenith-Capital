@@ -23,6 +23,7 @@
 // mucho menor que perder absolutamente todo cada vez que Render reinicia,
 // que es lo que pasaba antes.
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { MongoClient } = require('mongodb');
 
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -89,6 +90,9 @@ function seedData() {
         balance: 1500.75,
         equity: 1523.1,
         leverage: '1:100',
+        walletName: 'Mi Billetera',
+        walletColor: '#3987e5',
+        walletLink: `zenith-capital.app/wallet/${crypto.randomBytes(12).toString('hex')}`,
         createdAt: now,
       },
       {
@@ -100,6 +104,9 @@ function seedData() {
         balance: 8200.0,
         equity: 8175.4,
         leverage: '1:200',
+        walletName: 'Billetera Pro',
+        walletColor: '#c98a3e',
+        walletLink: `zenith-capital.app/wallet/${crypto.randomBytes(12).toString('hex')}`,
         createdAt: now,
       },
     ],
@@ -224,6 +231,29 @@ function runMigrations(data) {
       migrated = true;
     }
   });
+
+  // Billeteras (antes "cuentas de trading", agosto 2026): las que ya
+  // existían antes de esta actualización no tienen nombre, color ni enlace
+  // propio — se completan acá para que se vean bien de inmediato, sin que
+  // el usuario tenga que hacer nada. walletLink se genera una sola vez y
+  // queda fijo desde entonces, igual que si se hubiera creado con él desde
+  // el principio.
+  if (Array.isArray(data.accounts)) {
+    data.accounts.forEach((a) => {
+      if (a.walletName === undefined) {
+        a.walletName = 'Mi Billetera';
+        migrated = true;
+      }
+      if (a.walletColor === undefined) {
+        a.walletColor = '#3987e5';
+        migrated = true;
+      }
+      if (!a.walletLink) {
+        a.walletLink = `zenith-capital.app/wallet/${crypto.randomBytes(12).toString('hex')}`;
+        migrated = true;
+      }
+    });
+  }
 
   if (!Array.isArray(data.documents)) {
     data.documents = [];

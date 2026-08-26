@@ -147,12 +147,12 @@
 
   function accountOptions(accounts, selectedId) {
     if (!accounts || accounts.length === 0) {
-      return '<option value="">Este usuario no tiene cuentas</option>';
+      return '<option value="">Este usuario no tiene billeteras</option>';
     }
     return accounts
       .map(
         (a) =>
-          `<option value="${a.id}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.accountNumber)} · ${money(a.balance)} (${escapeHtml(a.accountType)})</option>`
+          `<option value="${a.id}" ${a.id === selectedId ? 'selected' : ''}>${escapeHtml(a.walletName || a.accountNumber)} — ${escapeHtml(a.accountNumber)} · ${money(a.balance)} (${escapeHtml(a.accountType)})</option>`
       )
       .join('');
   }
@@ -408,7 +408,7 @@
             return `
               <div class="pending-item admin-edit-card">
                 <div class="pending-item-top">
-                  <span class="pending-item-user">${escapeHtml(a.accountNumber)} · ${escapeHtml(a.accountType)} (${escapeHtml(a.currency)})</span>
+                  <span class="pending-item-user">${escapeHtml(a.walletName || a.accountNumber)} — ${escapeHtml(a.accountNumber)} · ${escapeHtml(a.accountType)} (${escapeHtml(a.currency)})</span>
                   <span>Balance actual: ${money(a.balance)} · Equity: ${money(a.equity)} · Apalancamiento: ${escapeHtml(a.leverage || '—')}</span>
                 </div>
                 ${pending ? pendingEditNote(pending, describe) : `
@@ -480,15 +480,15 @@
       : '<div class="subtitle">Este usuario todavía no tiene posiciones abiertas.</div>';
 
     const accountOptionsForNew = u.accounts.length
-      ? u.accounts.map((a) => `<option value="${a.id}">${escapeHtml(a.accountNumber)} (${escapeHtml(a.accountType)})</option>`).join('')
-      : '<option value="">Sin cuentas disponibles</option>';
+      ? u.accounts.map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || a.accountNumber)} — ${escapeHtml(a.accountNumber)} (${escapeHtml(a.accountType)})</option>`).join('')
+      : '<option value="">Sin billeteras disponibles</option>';
     const assetOptionsForNew = ADMIN_ASSET_OPTIONS.map((a) => `<option value="${a.asset}|${a.symbol}">${escapeHtml(a.name)}</option>`).join('');
 
     return `
       <tr class="user-edit-row" data-user-edit-row="${u.id}">
         <td colspan="7">
           <div class="user-edit-panel">
-            <h4>Cuentas de ${escapeHtml(u.fullName || u.username)}</h4>
+            <h4>Billeteras de ${escapeHtml(u.fullName || u.username)}</h4>
             ${accountsHtml}
             <h4 style="margin-top:16px;">Posiciones (holdings)</h4>
             ${holdingsHtml}
@@ -499,7 +499,7 @@
                 <div class="pending-item-top"><span class="pending-item-user">Agregar posición nueva</span></div>
                 <div class="pending-item-fields">
                   <div class="field pending-item-field" style="min-width:150px;">
-                    <label>Cuenta</label>
+                    <label>Billetera</label>
                     <select data-role="new-holding-account">${accountOptionsForNew}</select>
                   </div>
                   <div class="field pending-item-field" style="min-width:170px;">
@@ -576,8 +576,8 @@
         const totalBalance = u.accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
         const accountsText =
           u.accounts.length === 0
-            ? 'Sin cuentas'
-            : `${u.accounts.length} cuenta${u.accounts.length === 1 ? '' : 's'} · ${money(totalBalance)}`;
+            ? 'Sin billeteras'
+            : `${u.accounts.length} billetera${u.accounts.length === 1 ? '' : 's'} · ${money(totalBalance)}`;
         const rankBadge = u.rank
           ? `<span class="badge-pill rank-${u.rank.key}">${escapeHtml(RANK_LABELS[u.rank.key] || u.rank.label)}</span>`
           : '<span class="badge-pill">Sin insignia</span>';

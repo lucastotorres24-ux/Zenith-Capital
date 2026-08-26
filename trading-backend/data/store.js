@@ -156,7 +156,7 @@ function getAccountById(id, userId) {
   return account ? stripPendingInternals(account) : null;
 }
 
-function createAccount({ userId, accountNumber, accountType, currency, balance, equity, leverage }) {
+function createAccount({ userId, accountNumber, accountType, currency, balance, equity, leverage, walletName, walletColor, walletLink }) {
   const db = load();
   const account = {
     id: db.nextAccountId++,
@@ -167,6 +167,12 @@ function createAccount({ userId, accountNumber, accountType, currency, balance, 
     balance,
     equity,
     leverage,
+    // Personalización de la billetera (agosto 2026): nombre y color los
+    // puede cambiar el usuario cuando quiera; walletLink se genera una sola
+    // vez acá y no vuelve a cambiar (ver routes/accounts.js).
+    walletName: walletName || 'Mi Billetera',
+    walletColor: walletColor || '#3987e5',
+    walletLink: walletLink || null,
     createdAt: new Date().toISOString(),
   };
   db.accounts.push(account);
