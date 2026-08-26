@@ -28,9 +28,27 @@ const PANEL_META = {
   'pax-gold': { symbol: 'PAXG', name: 'Oro (PAX Gold)' },
 };
 
-const PRICE_POLL_MS = 8_000;
+const PRICE_POLL_MS = 5_000;
 const CHART_REFRESH_MS = 60_000;
 const PAYOUT_PERCENT = 85;
+
+// Distintos plazos para estudiar el mismo activo, como en una plataforma
+// real — CoinGecko elige solo el tamaño de vela según cuántos días se
+// pidan, así que cada plazo trae velas de un tamaño distinto (más cortas
+// en "1D", más largas en "1A"). No se inventa nada: todo sale de datos
+// históricos reales.
+const TIMEFRAME_CONFIG = {
+  '1D': { days: 1, label: '1D' },
+  '7D': { days: 7, label: '7D' },
+  '1M': { days: 30, label: '1M' },
+  '3M': { days: 90, label: '3M' },
+  '1A': { days: 365, label: '1A' },
+};
+const CHART_TYPES = [
+  { key: 'candles', label: 'Velas' },
+  { key: 'line', label: 'Línea' },
+  { key: 'area', label: 'Área' },
+];
 
 let accountsCache = [];
 let optionsCache = [];
@@ -41,10 +59,23 @@ let dayChangePercents = {};
 
 let selectedAsset = 'bitcoin';
 let selectedDuration = 60;
+let selectedTimeframe = '1D';
+let selectedChartType = 'candles';
+let indicatorsOn = { sma: false, bb: false, volume: false, rsi: false };
 
 let chart = null;
-let candleSeries = null;
+let priceSeries = null; // la serie principal (velas, línea o área, según selectedChartType)
 let livePriceLine = null;
+let volumeSeries = null;
+let smaFastSeries = null;
+let smaSlowSeries = null;
+let bbUpperSeries = null;
+let bbLowerSeries = null;
+let rsiChart = null;
+let rsiSeries = null;
+
+let rawCandles = []; // últimas velas cargadas para el activo/plazo actual (con volumen ya emparejado)
+let barDurationSeconds = 1800; // se recalcula con cada carga según el tamaño real de vela recibido
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
@@ -60,16 +91,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('panel-amount').addEventListener('input', updatePayoutPreview);
 
   initChart();
+  renderToolbar();
+  wireFullscreen();
 
   loadAccounts();
   loadOptionsHistory();
-  loadChartData(selectedAsset);
+  loadChartData(selectedAsset, selectedTimeframe);
   pollPrices();
 
   updatePayoutPreview();
 
   setInterval(pollPrices, PRICE_POLL_MS);
-  setInterval(() => loadChartData(selectedAsset), CHART_REFRESH_MS);
+  setInterval(() => loadChartData(selectedAsset, selectedTimeframe), CHART_REFRESH_MS);
   setInterval(tickActiveOptions, 1000);
 });
 
@@ -170,7 +203,12 @@ function renderAssetTabs() {
   const container = document.getElementById('asset-tabs');
   container.innerHTML = PANEL_ASSETS.map((id) => {
     const meta = PANEL_META[id];
-    return `<button type="button" class="asset-tab ${id === selectedAsset ? 'is-active' : ''}" data-asset="${id}">${meta.symbol}</button>`;
+    return `
+      <button type="button" class="asset-tab ${id === selectedAsset ? 'is-active' : ''}" data-asset="${id}">
+        <span>${meta.symbol}</span>
+        <span class="asset-tab-change is-flat" data-change-for="${id}">·</span>
+      </button>
+    `;
   }).join('');
 
   container.querySelectorAll('.asset-tab').forEach((btn) => {
@@ -178,8 +216,31 @@ function renderAssetTabs() {
       selectedAsset = btn.dataset.asset;
       container.querySelectorAll('.asset-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
       updatePriceDisplay();
-      loadChartData(selectedAsset);
+      loadChartData(selectedAsset, selectedTimeframe);
     });
+  });
+}
+
+// Actualiza el pequeño porcentaje de cambio (24h) bajo cada pestaña de
+// activo, para poder comparar de un vistazo cuál se está moviendo más sin
+// tener que entrar uno por uno — igual que un watchlist real.
+function updateAssetTabBadges() {
+  PANEL_ASSETS.forEach((id) => {
+    const el = document.querySelector(`[data-change-for="${id}"]`);
+    if (!el) return;
+    const change = dayChangePercents[id];
+    if (typeof change !== 'number') return;
+    el.classList.remove('is-up', 'is-down', 'is-flat');
+    if (change > 0.01) {
+      el.classList.add('is-up');
+      el.textContent = `+${change.toFixed(1)}%`;
+    } else if (change < -0.01) {
+      el.classList.add('is-down');
+      el.textContent = `${change.toFixed(1)}%`;
+    } else {
+      el.classList.add('is-flat');
+      el.textContent = '0.0%';
+    }
   });
 }
 
@@ -202,16 +263,10 @@ function updatePayoutPreview() {
 // Gráfico de velas (lightweight-charts + histórico real de CoinGecko)
 // ---------------------------------------------------------------------
 
-function initChart() {
-  const container = document.getElementById('panel-chart-container');
+let isHoveringChart = false;
 
-  if (!window.LightweightCharts) {
-    container.innerHTML = '<div class="empty-state"><div>No se pudo cargar el gráfico (librería no disponible). Los precios en vivo y las operaciones siguen funcionando normalmente.</div></div>';
-    return;
-  }
-
-  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  chart = LightweightCharts.createChart(container, {
+function baseChartOptions(isLight) {
+  return {
     layout: {
       background: { type: 'solid', color: 'transparent' },
       textColor: isLight ? '#4c4b47' : '#c3c2b7',
@@ -223,30 +278,398 @@ function initChart() {
     rightPriceScale: { borderColor: isLight ? 'rgba(20,20,15,0.12)' : 'rgba(255,255,255,0.10)' },
     timeScale: { borderColor: isLight ? 'rgba(20,20,15,0.12)' : 'rgba(255,255,255,0.10)', timeVisible: true, secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-  });
+  };
+}
 
-  candleSeries = chart.addCandlestickSeries({
+function createPriceSeriesForType(type) {
+  if (type === 'line') {
+    return chart.addLineSeries({ color: '#3987e5', lineWidth: 2 });
+  }
+  if (type === 'area') {
+    return chart.addAreaSeries({
+      lineColor: '#3987e5',
+      topColor: 'rgba(57,135,229,0.35)',
+      bottomColor: 'rgba(57,135,229,0.02)',
+      lineWidth: 2,
+    });
+  }
+  return chart.addCandlestickSeries({
     upColor: '#0ca30c',
     downColor: '#e66767',
     borderVisible: false,
     wickUpColor: '#0ca30c',
     wickDownColor: '#e66767',
   });
+}
 
-  const resize = () => chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+function initChart() {
+  const container = document.getElementById('panel-chart-container');
+
+  if (!window.LightweightCharts) {
+    container.innerHTML = '<div class="empty-state"><div>No se pudo cargar el gráfico (librería no disponible). Los precios en vivo y las operaciones siguen funcionando normalmente.</div></div>';
+    return;
+  }
+
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const chartOptions = baseChartOptions(isLight);
+
+  chart = LightweightCharts.createChart(container, chartOptions);
+  priceSeries = createPriceSeriesForType(selectedChartType);
+
+  volumeSeries = chart.addHistogramSeries({
+    color: isLight ? 'rgba(76,75,71,0.35)' : 'rgba(195,194,183,0.28)',
+    priceFormat: { type: 'volume' },
+    priceScaleId: '',
+  });
+  volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  volumeSeries.applyOptions({ visible: !!indicatorsOn.volume });
+
+  const rsiContainer = document.getElementById('panel-rsi-chart');
+  if (rsiContainer) {
+    rsiChart = LightweightCharts.createChart(rsiContainer, {
+      ...chartOptions,
+      timeScale: { ...chartOptions.timeScale, visible: false },
+      handleScroll: false,
+      handleScale: false,
+    });
+    rsiSeries = rsiChart.addLineSeries({ color: '#c98a3e', lineWidth: 2 });
+    rsiSeries.createPriceLine({ price: 70, color: 'rgba(230,103,103,0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
+    rsiSeries.createPriceLine({ price: 30, color: 'rgba(12,163,12,0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
+
+    // Sincroniza el desplazamiento/zoom entre el gráfico principal y el de
+    // RSI, como en una plataforma real con paneles apilados.
+    let syncingRanges = false;
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (syncingRanges || !range || !rsiChart) return;
+      syncingRanges = true;
+      rsiChart.timeScale().setVisibleLogicalRange(range);
+      syncingRanges = false;
+    });
+    rsiChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (syncingRanges || !range || !chart) return;
+      syncingRanges = true;
+      chart.timeScale().setVisibleLogicalRange(range);
+      syncingRanges = false;
+    });
+  }
+
+  wireCrosshair();
+
+  const resize = () => {
+    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+    if (rsiChart && rsiContainer) {
+      rsiChart.applyOptions({ width: rsiContainer.clientWidth, height: rsiContainer.clientHeight });
+    }
+  };
   window.addEventListener('resize', resize);
   resize();
 }
 
-async function loadChartData(assetId) {
-  if (!candleSeries) return;
-  try {
-    const url = `https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=1`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('No se pudo obtener el histórico');
-    const raw = await res.json();
+function renderPriceSeries() {
+  if (!priceSeries || !rawCandles.length) return;
+  if (selectedChartType === 'candles') {
+    priceSeries.setData(rawCandles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })));
+  } else {
+    priceSeries.setData(rawCandles.map((c) => ({ time: c.time, value: c.close })));
+  }
+}
 
-    const candles = raw
+function renderVolumeSeries() {
+  if (!volumeSeries || !rawCandles.length) return;
+  volumeSeries.setData(rawCandles.map((c) => ({
+    time: c.time,
+    value: c.volume || 0,
+    color: c.close >= c.open ? 'rgba(12,163,12,0.5)' : 'rgba(230,103,103,0.5)',
+  })));
+}
+
+function setChartType(type) {
+  if (!chart || type === selectedChartType) return;
+  selectedChartType = type;
+  document.querySelectorAll('#charttype-tabs .chart-tool-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.type === type));
+  if (priceSeries) chart.removeSeries(priceSeries);
+  priceSeries = createPriceSeriesForType(type);
+  livePriceLine = null; // pertenecía a la serie anterior, que ya no existe
+  renderPriceSeries();
+  updateLivePriceLine();
+}
+
+function toggleIndicator(key) {
+  indicatorsOn[key] = !indicatorsOn[key];
+  document.querySelectorAll('#indicator-toggles .chart-tool-btn').forEach((b) => {
+    if (b.dataset.indicator === key) b.classList.toggle('is-active', indicatorsOn[key]);
+  });
+  if (key === 'rsi') {
+    const rsiPanel = document.getElementById('panel-rsi-container');
+    rsiPanel.style.display = indicatorsOn.rsi ? 'block' : 'none';
+    const rsiContainer = document.getElementById('panel-rsi-chart');
+    if (rsiChart && rsiContainer) {
+      setTimeout(() => rsiChart.applyOptions({ width: rsiContainer.clientWidth, height: rsiContainer.clientHeight }), 0);
+    }
+  }
+  updateIndicatorSeries();
+}
+
+function renderToolbar() {
+  const tfContainer = document.getElementById('timeframe-tabs');
+  tfContainer.innerHTML = Object.keys(TIMEFRAME_CONFIG).map((key) => `
+    <button type="button" class="chart-tool-btn ${key === selectedTimeframe ? 'is-active' : ''}" data-timeframe="${key}">${TIMEFRAME_CONFIG[key].label}</button>
+  `).join('');
+  tfContainer.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.timeframe === selectedTimeframe) return;
+      selectedTimeframe = btn.dataset.timeframe;
+      tfContainer.querySelectorAll('button').forEach((b) => b.classList.toggle('is-active', b === btn));
+      loadChartData(selectedAsset, selectedTimeframe);
+    });
+  });
+
+  const typeContainer = document.getElementById('charttype-tabs');
+  typeContainer.innerHTML = CHART_TYPES.map((t) => `
+    <button type="button" class="chart-tool-btn ${t.key === selectedChartType ? 'is-active' : ''}" data-type="${t.key}">${t.label}</button>
+  `).join('');
+  typeContainer.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => setChartType(btn.dataset.type));
+  });
+
+  const indicatorContainer = document.getElementById('indicator-toggles');
+  const INDICATORS = [
+    { key: 'sma', label: 'Medias móviles' },
+    { key: 'bb', label: 'Bandas Bollinger' },
+    { key: 'volume', label: 'Volumen' },
+    { key: 'rsi', label: 'RSI' },
+  ];
+  indicatorContainer.innerHTML = INDICATORS.map((ind) => `
+    <button type="button" class="chart-tool-btn ${indicatorsOn[ind.key] ? 'is-active' : ''}" data-indicator="${ind.key}">${ind.label}</button>
+  `).join('');
+  indicatorContainer.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => toggleIndicator(btn.dataset.indicator));
+  });
+}
+
+// ---------------------------------------------------------------------
+// Indicadores técnicos (calculados en el navegador a partir de las velas
+// reales ya cargadas — sin librerías externas de indicadores)
+// ---------------------------------------------------------------------
+
+function computeSMA(candles, period) {
+  const result = [];
+  let sum = 0;
+  for (let i = 0; i < candles.length; i++) {
+    sum += candles[i].close;
+    if (i >= period) sum -= candles[i - period].close;
+    if (i >= period - 1) result.push({ time: candles[i].time, value: sum / period });
+  }
+  return result;
+}
+
+function computeBollinger(candles, period, mult) {
+  const upper = [];
+  const lower = [];
+  for (let i = period - 1; i < candles.length; i++) {
+    const slice = candles.slice(i - period + 1, i + 1);
+    const mean = slice.reduce((s, c) => s + c.close, 0) / period;
+    const variance = slice.reduce((s, c) => s + (c.close - mean) ** 2, 0) / period;
+    const sd = Math.sqrt(variance);
+    upper.push({ time: candles[i].time, value: mean + mult * sd });
+    lower.push({ time: candles[i].time, value: mean - mult * sd });
+  }
+  return { upper, lower };
+}
+
+// RSI de Wilder (el estándar de la industria) — usa un promedio suavizado
+// de ganancias/pérdidas en vez de un promedio simple.
+function computeRSI(candles, period) {
+  if (candles.length <= period) return [];
+  const result = [];
+  let gainSum = 0;
+  let lossSum = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = candles[i].close - candles[i - 1].close;
+    if (diff >= 0) gainSum += diff; else lossSum -= diff;
+  }
+  let avgGain = gainSum / period;
+  let avgLoss = lossSum / period;
+  result.push({ time: candles[period].time, value: avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss) });
+
+  for (let i = period + 1; i < candles.length; i++) {
+    const diff = candles[i].close - candles[i - 1].close;
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    result.push({ time: candles[i].time, value: rsi });
+  }
+  return result;
+}
+
+function updateIndicatorSeries() {
+  if (!chart || !rawCandles.length) return;
+
+  if (indicatorsOn.sma) {
+    const fast = computeSMA(rawCandles, 9);
+    const slow = computeSMA(rawCandles, 21);
+    if (!smaFastSeries) smaFastSeries = chart.addLineSeries({ color: '#3987e5', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    if (!smaSlowSeries) smaSlowSeries = chart.addLineSeries({ color: '#c98a3e', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    smaFastSeries.setData(fast);
+    smaSlowSeries.setData(slow);
+  } else {
+    if (smaFastSeries) { chart.removeSeries(smaFastSeries); smaFastSeries = null; }
+    if (smaSlowSeries) { chart.removeSeries(smaSlowSeries); smaSlowSeries = null; }
+  }
+
+  if (indicatorsOn.bb) {
+    const { upper, lower } = computeBollinger(rawCandles, 20, 2);
+    if (!bbUpperSeries) bbUpperSeries = chart.addLineSeries({ color: 'rgba(195,194,183,0.55)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    if (!bbLowerSeries) bbLowerSeries = chart.addLineSeries({ color: 'rgba(195,194,183,0.55)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    bbUpperSeries.setData(upper);
+    bbLowerSeries.setData(lower);
+  } else {
+    if (bbUpperSeries) { chart.removeSeries(bbUpperSeries); bbUpperSeries = null; }
+    if (bbLowerSeries) { chart.removeSeries(bbLowerSeries); bbLowerSeries = null; }
+  }
+
+  if (volumeSeries) volumeSeries.applyOptions({ visible: !!indicatorsOn.volume });
+
+  if (indicatorsOn.rsi && rsiSeries) {
+    rsiSeries.setData(computeRSI(rawCandles, 14));
+  }
+}
+
+// ---------------------------------------------------------------------
+// Barra Apertura/Máximo/Mínimo/Cierre/Volumen (al pasar el mouse, o la
+// vela más reciente cuando no se está pasando el mouse por el gráfico)
+// ---------------------------------------------------------------------
+
+function setOhlcBar(open, high, low, close, volume) {
+  const openEl = document.getElementById('ohlc-open');
+  if (!openEl) return;
+  document.getElementById('ohlc-high').textContent = money(high);
+  document.getElementById('ohlc-low').textContent = money(low);
+  const closeEl = document.getElementById('ohlc-close');
+  openEl.textContent = money(open);
+  closeEl.textContent = money(close);
+  document.getElementById('ohlc-volume').textContent = typeof volume === 'number'
+    ? volume.toLocaleString('en-US', { maximumFractionDigits: 0 })
+    : '—';
+
+  closeEl.classList.remove('is-up', 'is-down');
+  closeEl.classList.add(close >= open ? 'is-up' : 'is-down');
+}
+
+function showLastCandleOhlc() {
+  if (!rawCandles.length) return;
+  const last = rawCandles[rawCandles.length - 1];
+  setOhlcBar(last.open, last.high, last.low, last.close, last.volume || 0);
+}
+
+function findVolumeAt(time) {
+  const match = rawCandles.find((c) => c.time === time);
+  return match ? match.volume || 0 : null;
+}
+
+function wireCrosshair() {
+  if (!chart) return;
+  chart.subscribeCrosshairMove((param) => {
+    if (!priceSeries) return;
+    const data = param && param.time && param.seriesData ? param.seriesData.get(priceSeries) : null;
+    if (!data) {
+      isHoveringChart = false;
+      showLastCandleOhlc();
+      return;
+    }
+    isHoveringChart = true;
+    if (typeof data.open === 'number') {
+      setOhlcBar(data.open, data.high, data.low, data.close, findVolumeAt(param.time));
+    } else if (typeof data.value === 'number') {
+      setOhlcBar(data.value, data.value, data.value, data.value, findVolumeAt(param.time));
+    }
+  });
+}
+
+function wireFullscreen() {
+  const btn = document.getElementById('chart-fullscreen-btn');
+  const card = document.getElementById('panel-chart-card');
+  if (!btn || !card) return;
+
+  const applyResize = () => {
+    const container = document.getElementById('panel-chart-container');
+    if (chart && container) chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+    const rsiContainer = document.getElementById('panel-rsi-chart');
+    if (rsiChart && rsiContainer) rsiChart.applyOptions({ width: rsiContainer.clientWidth, height: rsiContainer.clientHeight });
+  };
+
+  btn.addEventListener('click', () => {
+    card.classList.toggle('is-fullscreen');
+    btn.textContent = card.classList.contains('is-fullscreen') ? '✕' : '⛶';
+    btn.title = card.classList.contains('is-fullscreen') ? 'Salir de pantalla completa' : 'Pantalla completa';
+    setTimeout(applyResize, 50);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && card.classList.contains('is-fullscreen')) {
+      card.classList.remove('is-fullscreen');
+      btn.textContent = '⛶';
+      btn.title = 'Pantalla completa';
+      setTimeout(applyResize, 50);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Vela en vivo: la última vela se mueve con cada precio nuevo (no es una
+// simulación aleatoria), y cuando pasa el tiempo de una vela completa
+// (según el plazo elegido) se abre una vela nueva — igual que en una
+// plataforma real.
+// ---------------------------------------------------------------------
+
+function updateLiveCandle(assetId, price) {
+  if (assetId !== selectedAsset || typeof price !== 'number' || !rawCandles.length || !priceSeries) return;
+
+  const last = rawCandles[rawCandles.length - 1];
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  if (nowSec - last.time >= barDurationSeconds) {
+    rawCandles.push({ time: last.time + barDurationSeconds, open: price, high: price, low: price, close: price, volume: 0 });
+  } else {
+    last.high = Math.max(last.high, price);
+    last.low = Math.min(last.low, price);
+    last.close = price;
+  }
+
+  const current = rawCandles[rawCandles.length - 1];
+  if (selectedChartType === 'candles') {
+    priceSeries.update({ time: current.time, open: current.open, high: current.high, low: current.low, close: current.close });
+  } else {
+    priceSeries.update({ time: current.time, value: current.close });
+  }
+
+  if (volumeSeries) {
+    volumeSeries.update({
+      time: current.time,
+      value: current.volume || 0,
+      color: current.close >= current.open ? 'rgba(12,163,12,0.5)' : 'rgba(230,103,103,0.5)',
+    });
+  }
+
+  updateIndicatorSeries();
+  if (!isHoveringChart) showLastCandleOhlc();
+}
+
+async function loadChartData(assetId, timeframeKey) {
+  if (!priceSeries) return;
+  const timeframe = TIMEFRAME_CONFIG[timeframeKey] || TIMEFRAME_CONFIG['1D'];
+  try {
+    const [ohlcRes, volRes] = await Promise.all([
+      fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=${timeframe.days}`),
+      fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=${timeframe.days}`),
+    ]);
+    if (!ohlcRes.ok) throw new Error('No se pudo obtener el histórico');
+    const rawOhlc = await ohlcRes.json();
+    const rawVolumes = volRes.ok ? ((await volRes.json()).total_volumes || []) : [];
+
+    const candles = rawOhlc
       .map(([timestampMs, open, high, low, close]) => ({
         time: Math.floor(timestampMs / 1000),
         open,
@@ -257,7 +680,7 @@ async function loadChartData(assetId) {
       .sort((a, b) => a.time - b.time);
 
     // CoinGecko a veces repite el timestamp del último punto entre llamadas;
-    // el gráfico de velas necesita tiempos estrictamente ascendentes.
+    // el gráfico necesita tiempos estrictamente ascendentes.
     const deduped = [];
     candles.forEach((c) => {
       if (deduped.length && deduped[deduped.length - 1].time === c.time) {
@@ -267,9 +690,43 @@ async function loadChartData(assetId) {
       }
     });
 
-    if (assetId !== selectedAsset) return; // el usuario ya cambió de activo mientras cargaba
-    candleSeries.setData(deduped);
+    if (deduped.length < 2) return;
+
+    // Tamaño real de cada vela para este plazo (mediana de los espacios
+    // entre velas), usado para saber cuándo debe abrirse una vela nueva
+    // en vivo según el plazo elegido.
+    const gaps = [];
+    for (let i = 1; i < deduped.length; i++) gaps.push(deduped[i].time - deduped[i - 1].time);
+    gaps.sort((a, b) => a - b);
+    barDurationSeconds = gaps[Math.floor(gaps.length / 2)] || 1800;
+
+    // Empareja cada vela con su volumen real (dato independiente de CoinGecko),
+    // sumando los puntos de volumen que caen dentro del rango de tiempo de esa vela.
+    const volPoints = rawVolumes
+      .map(([ts, vol]) => ({ time: Math.floor(ts / 1000), volume: vol }))
+      .sort((a, b) => a.time - b.time);
+    let vIdx = 0;
+    deduped.forEach((c, i) => {
+      const bucketEnd = i + 1 < deduped.length ? deduped[i + 1].time : c.time + barDurationSeconds;
+      let sum = 0;
+      let found = false;
+      while (vIdx < volPoints.length && volPoints[vIdx].time < bucketEnd) {
+        if (volPoints[vIdx].time >= c.time) { sum += volPoints[vIdx].volume; found = true; }
+        vIdx++;
+      }
+      c.volume = found ? sum : 0;
+    });
+
+    if (assetId !== selectedAsset || timeframeKey !== selectedTimeframe) return; // cambió mientras cargaba
+
+    rawCandles = deduped;
+    renderPriceSeries();
+    renderVolumeSeries();
+    updateIndicatorSeries();
+
     chart.timeScale().fitContent();
+    if (rsiChart) rsiChart.timeScale().fitContent();
+    if (!isHoveringChart) showLastCandleOhlc();
   } catch (err) {
     // Silencioso: el precio en vivo y las operaciones no dependen del gráfico.
   }
@@ -297,6 +754,8 @@ async function pollPrices() {
 
     updatePriceDisplay();
     updateLivePriceLine();
+    updateAssetTabBadges();
+    updateLiveCandle(selectedAsset, currentPrices[selectedAsset]);
   } catch (err) {
     // Silencioso: se reintenta en el próximo ciclo.
   }
@@ -324,14 +783,14 @@ function updatePriceDisplay() {
 }
 
 function updateLivePriceLine() {
-  if (!candleSeries) return;
+  if (!priceSeries) return;
   const price = currentPrices[selectedAsset];
   if (typeof price !== 'number') return;
 
   if (livePriceLine) {
-    candleSeries.removePriceLine(livePriceLine);
+    priceSeries.removePriceLine(livePriceLine);
   }
-  livePriceLine = candleSeries.createPriceLine({
+  livePriceLine = priceSeries.createPriceLine({
     price,
     color: '#3987e5',
     lineWidth: 1,

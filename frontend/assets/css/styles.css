@@ -1427,6 +1427,113 @@ a.brand:hover {
   cursor: not-allowed;
 }
 
+/* ---- Herramientas del gráfico (timeframes, tipo de vela, indicadores) ---- */
+
+.chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-toolbar-group {
+  display: flex;
+  gap: 4px;
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+
+.chart-tool-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chart-tool-btn:hover { color: var(--text-secondary); background: var(--surface-hover); }
+.chart-tool-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+#chart-fullscreen-btn {
+  margin-left: auto;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 7px 11px;
+  font-size: 14px;
+}
+#chart-fullscreen-btn:hover { background: var(--surface-hover); }
+
+.chart-ohlc-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-ohlc-bar strong { color: var(--text-secondary); font-weight: 700; }
+.chart-ohlc-bar strong.is-up { color: var(--good); }
+.chart-ohlc-bar strong.is-down { color: var(--critical); }
+
+.panel-rsi-container {
+  position: relative;
+  height: 120px;
+  margin-top: 8px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--page-bg);
+}
+.panel-rsi-label {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  z-index: 2;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.asset-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.2;
+}
+.asset-tab-change {
+  font-size: 10px;
+  font-weight: 700;
+}
+.asset-tab-change.is-up { color: var(--good); }
+.asset-tab-change.is-down { color: var(--critical); }
+.asset-tab-change.is-flat { color: var(--text-muted); }
+
+.panel-chart-card.is-fullscreen {
+  position: fixed;
+  inset: 12px;
+  z-index: 500;
+  min-height: unset;
+}
+.panel-chart-card.is-fullscreen #panel-chart-container {
+  min-height: 0;
+}
+
 .payout-info {
   display: flex;
   justify-content: space-between;

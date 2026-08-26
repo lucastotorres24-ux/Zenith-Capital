@@ -62,7 +62,7 @@
 <main class="panel-body">
 
   <!-- Gráfico -->
-  <section class="panel-chart-card">
+  <section class="panel-chart-card" id="panel-chart-card">
     <div class="panel-chart-header">
       <div class="asset-tabs" id="asset-tabs">
         <!-- se llena por JS -->
@@ -73,12 +73,38 @@
       </div>
     </div>
 
+    <div class="chart-toolbar">
+      <div class="chart-toolbar-group" id="timeframe-tabs">
+        <!-- se llena por JS -->
+      </div>
+      <div class="chart-toolbar-group" id="charttype-tabs">
+        <!-- se llena por JS -->
+      </div>
+      <div class="chart-toolbar-group" id="indicator-toggles">
+        <!-- se llena por JS -->
+      </div>
+      <button type="button" class="chart-tool-btn" id="chart-fullscreen-btn" title="Pantalla completa">⛶</button>
+    </div>
+
+    <div class="chart-ohlc-bar" id="chart-ohlc-bar">
+      <span class="ohlc-item">A <strong id="ohlc-open">—</strong></span>
+      <span class="ohlc-item">M <strong id="ohlc-high">—</strong></span>
+      <span class="ohlc-item">m <strong id="ohlc-low">—</strong></span>
+      <span class="ohlc-item">C <strong id="ohlc-close">—</strong></span>
+      <span class="ohlc-item">Vol <strong id="ohlc-volume">—</strong></span>
+    </div>
+
     <div id="panel-chart-container"></div>
+    <div id="panel-rsi-container" class="panel-rsi-container" style="display:none;">
+      <div class="panel-rsi-label">RSI (14)</div>
+      <div id="panel-rsi-chart" style="position:absolute; inset:0;"></div>
+    </div>
 
     <p class="panel-chart-note">
-      Velas de las últimas 24 horas con datos históricos reales de CoinGecko (puede tener algunos minutos
-      u horas de rezago respecto al segundo exacto). El precio de entrada/salida de cada operación se toma
-      del precio en vivo mostrado arriba a la derecha.
+      Velas con datos históricos reales de CoinGecko (puede tener algunos minutos u horas de rezago
+      respecto al segundo exacto). La vela más reciente se actualiza en vivo con cada precio nuevo — no
+      es una simulación aleatoria, se mueve con el precio real del mercado. El precio de entrada/salida
+      de cada operación se toma del precio en vivo mostrado arriba a la derecha.
     </p>
   </section>
 

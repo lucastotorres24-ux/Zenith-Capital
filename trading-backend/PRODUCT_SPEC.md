@@ -66,6 +66,15 @@ así no hay que repetir el contexto en cada conversación.
   desaparecen cuando Render reinicia el servicio) y solo se puede
   registrar con correos de dominios reales** — ver sección 20 (agosto
   2026).
+- **Inicio de sesión con usuario o correo, correos duplicados bloqueados,
+  sesión de 30 días con aviso claro al vencer, buscador de cuentas en el
+  panel de administrador, y términos y condiciones reescritos explicando
+  qué es el trading** — ver sección 21 (agosto 2026).
+- **Panel de trading con velas que se mueven en vivo (no cada 60s), cinco
+  plazos (1D a 1A), tres tipos de gráfico (velas/línea/área) e
+  indicadores técnicos (medias móviles, Bandas de Bollinger, volumen,
+  RSI) con su propio sub-gráfico sincronizado, barra OHLC y pantalla
+  completa** — ver sección 22 (agosto 2026).
   - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
     asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
     elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
@@ -1142,6 +1151,55 @@ cambio** (no solo el símbolo).
   educativo de simulación y ninguna cifra es dinero real — ese punto es
   la única línea roja que no se negoció en esta reescritura (ver
   "Restricciones de seguridad" más abajo).
+
+## 22. Panel de trading "épico" al estilo Exness: velas en vivo, más plazos, tipos de gráfico e indicadores técnicos (agosto 2026)
+
+- **La vela más reciente ahora se mueve en vivo**: antes el gráfico solo se
+  refrescaba entero cada 60 segundos (parecía "saltar"). Ahora, cada vez que
+  llega un precio nuevo (cada 5 segundos, `pollPrices()`), la última vela se
+  actualiza al instante con `series.update()` — sube el máximo, baja el
+  mínimo y mueve el cierre con el precio real — y cuando pasa el tiempo
+  completo de una vela (según el plazo elegido) se abre una vela nueva
+  automáticamente (`updateLiveCandle()` en `trading-panel.js`). No es una
+  animación ni una simulación aleatoria: se mueve exactamente con el mismo
+  precio en vivo que ya se usaba para abrir/cerrar operaciones.
+- **Cinco plazos para estudiar el mismo activo** (`TIMEFRAME_CONFIG`): 1D,
+  7D, 1M, 3M y 1A, seleccionables desde una barra de pestañas sobre el
+  gráfico. Cada plazo trae velas de un tamaño distinto directamente de
+  CoinGecko (más cortas en 1D, más largas en 1A) — nada se inventa, todo
+  sigue siendo histórico real. El tamaño real de cada vela se detecta solo
+  (mediana del espacio entre velas recibidas) para saber cuándo debe abrirse
+  una vela nueva en vivo en ese plazo.
+- **Tres formas de ver el mismo precio**: Velas, Línea y Área
+  (`CHART_TYPES`), intercambiables sin perder los datos ya cargados
+  (`setChartType()`).
+- **Cuatro herramientas de análisis, activables por separado**:
+  - *Medias móviles*: dos líneas (9 y 21 periodos) calculadas en el
+    navegador (`computeSMA()`), sin librería externa de indicadores.
+  - *Bandas de Bollinger*: banda superior/inferior a partir de la media y
+    la desviación estándar de 20 periodos (`computeBollinger()`).
+  - *Volumen*: histograma real de CoinGecko (`/market_chart` →
+    `total_volumes`), emparejado con cada vela por rango de tiempo, mostrado
+    como capa inferior superpuesta al precio.
+  - *RSI (14)*: fuerza relativa calculada con el suavizado de Wilder
+    (`computeRSI()`, el estándar de la industria), en un sub-gráfico propio
+    debajo del principal (`#panel-rsi-container`) con líneas de referencia
+    en 70/30, cuyo desplazamiento y zoom quedan sincronizados con el
+    gráfico principal (`subscribeVisibleLogicalRangeChange`).
+- **Barra de Apertura/Máximo/Mínimo/Cierre/Volumen** encima del gráfico:
+  muestra los datos de la vela sobre la que está el mouse, o los de la vela
+  más reciente cuando no se está pasando el mouse por el gráfico.
+- **Pantalla completa**: un botón (⛶) expande el gráfico (con su barra de
+  herramientas, barra OHLC y RSI) a toda la pantalla — útil para estudiar
+  movimientos con más detalle, como en una plataforma real. Se puede salir
+  también con la tecla Escape.
+- **Insignia de cambio (24h) en cada pestaña de activo**: un porcentaje
+  pequeño bajo cada símbolo (BTC, ETH, etc.) en rojo o verde, para comparar
+  de un vistazo cuál activo se está moviendo más sin tener que entrar a
+  cada uno — igual que una lista de seguimiento ("watchlist") real.
+- Los precios en vivo se piden cada 5 segundos en vez de cada 15 (antes
+  reservado a otras pantallas), para que el movimiento de la vela en vivo
+  se sienta más fluido.
 
 ## Restricciones de seguridad (no negociables)
 
