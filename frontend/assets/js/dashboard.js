@@ -1598,7 +1598,7 @@ async function loadTicker() {
   try {
     const ids = CRYPTO_IDS.join(',');
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 8000);
     if (!res.ok) throw new Error('No se pudo obtener precios');
     const data = await res.json();
     renderTicker(data);

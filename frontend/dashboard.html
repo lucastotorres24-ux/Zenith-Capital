@@ -47,6 +47,11 @@
     <span>Zenith Capital</span>
   </a>
   <div class="topbar-right">
+    <!-- Insignias y Comunidad ya no son banners grandes en el dashboard —
+         ahora son estos dos íconos chiquitos junto al perfil, para que el
+         menú se vea más limpio (a pedido de Lucas). -->
+    <a class="icon-nav-btn" href="insignias.html" title="Insignias Zenith" aria-label="Insignias Zenith">🏅</a>
+    <a class="icon-nav-btn" href="community.html" title="Comunidad Zenith" aria-label="Comunidad Zenith">💬</a>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-trigger" id="user-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">
         <span class="user-avatar" id="user-initial">U</span>
@@ -95,37 +100,8 @@
     </div>
   </div>
 
-  <!-- Banner del panel de trading estilo IQ Option -->
-  <section class="trading-cta">
-    <div class="trading-cta-text">
-      <span class="trading-cta-tag">Nuevo</span>
-      <h2>Panel de Trading Zenith</h2>
-      <p class="subtitle">Opera Sube / Baja en tiempo reducido, con gráfico de velas y datos reales del mercado.</p>
-    </div>
-    <a class="btn btn-primary btn-lg" href="trading-panel.html">📊 Abrir panel de trading</a>
-  </section>
-
-  <!-- Banner de la Comunidad Zenith -->
-  <section class="trading-cta trading-cta-community">
-    <div class="trading-cta-text">
-      <span class="trading-cta-tag">Comunidad</span>
-      <h2>Comunidad Zenith</h2>
-      <p class="subtitle">Conversa (de forma simulada) con otros clientes certificados Zenith de todos los rangos.</p>
-    </div>
-    <a class="btn btn-secondary btn-lg" href="community.html">💬 Ver comunidad</a>
-  </section>
-
-  <!-- Banner de Insignias Zenith -->
-  <section class="trading-cta trading-cta-community">
-    <div class="trading-cta-text">
-      <span class="trading-cta-tag">Rangos</span>
-      <h2>Insignias Zenith</h2>
-      <p class="subtitle">Descubre qué privilegios desbloqueas en cada rango — hasta automatizar tus inversiones en Diamante y Platino.</p>
-    </div>
-    <a class="btn btn-secondary btn-lg" href="insignias.html">🏅 Ver insignias</a>
-  </section>
-
-  <!-- Stat tiles -->
+  <!-- Stat tiles: balance y tus números arriba de todo, como pidió Lucas,
+       para que se vean apenas se entra sin tener que bajar entre banners. -->
   <section class="stat-grid" id="stat-grid">
     <div class="stat-tile">
       <div class="label">Balance total</div>
@@ -147,6 +123,19 @@
       <div class="value" id="stat-count">—</div>
       <span class="delta is-flat">En tu perfil</span>
     </div>
+  </section>
+
+  <!-- Banner del panel de trading estilo IQ Option: el panel para abrir las
+       gráficas, justo debajo del balance. Comunidad e Insignias ya no van
+       acá como banners grandes — son los íconos pequeños de la barra
+       superior, para que el dashboard se vea más limpio. -->
+  <section class="trading-cta">
+    <div class="trading-cta-text">
+      <span class="trading-cta-tag">Nuevo</span>
+      <h2>Panel de Trading Zenith</h2>
+      <p class="subtitle">Opera Sube / Baja en tiempo reducido, con gráfico de velas y datos reales del mercado.</p>
+    </div>
+    <a class="btn btn-primary btn-lg" href="trading-panel.html">📊 Abrir panel de trading</a>
   </section>
 
   <!-- Análisis con IA -->

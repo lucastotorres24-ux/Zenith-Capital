@@ -1005,8 +1005,8 @@ async function loadChartData(assetId, timeframeKey) {
 
     try {
       const [ohlcRes, volRes] = await Promise.all([
-        fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=${timeframe.days}`),
-        fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=${timeframe.days}`),
+        fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=${timeframe.days}`, {}, 9000),
+        fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=${timeframe.days}`, {}, 9000),
       ]);
       if (!ohlcRes.ok) throw new Error('No se pudo obtener el histórico');
       const rawOhlc = await ohlcRes.json();
@@ -1118,14 +1118,14 @@ document.addEventListener('DOMContentLoaded', () => {
 async function fetchCryptoPrices(ids) {
   if (!ids.length) return {};
   const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, {}, 8000);
   if (!res.ok) throw new Error('No se pudo obtener precios');
   return res.json();
 }
 
 async function fetchMetalPrice(id) {
   try {
-    const res = await fetch(`https://api.gold-api.com/price/${PANEL_META[id].metalSymbol}`);
+    const res = await fetchWithTimeout(`https://api.gold-api.com/price/${PANEL_META[id].metalSymbol}`, {}, 8000);
     if (!res.ok) throw new Error('status ' + res.status);
     const data = await res.json();
     if (typeof data.price !== 'number') throw new Error('precio inválido');
@@ -1375,7 +1375,7 @@ async function fetchSinglePrice(assetId) {
   if (meta && meta.category === 'metal') return fetchMetalPrice(assetId);
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assetId}&vs_currencies=usd`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 8000);
     if (!res.ok) return null;
     const data = await res.json();
     return data[assetId]?.usd ?? null;

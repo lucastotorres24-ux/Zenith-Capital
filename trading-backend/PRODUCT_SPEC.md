@@ -1455,6 +1455,69 @@ cambio** (no solo el símbolo).
     (columnas y menús ahora dicen "Billeteras"), para que la terminología
     sea consistente en todo el sitio.
 
+## 27. Conectividad de CoinGecko, dashboard menos saturado y pantalla de acceso en celular con el mismo estilo del escritorio (agosto 2026)
+
+- **El problema real detrás de "se queda cargando" al cambiar de moneda**:
+  `fetch()` no tiene un límite de tiempo propio. Cuando CoinGecko (la API
+  gratuita de precios) "se cuelga" — acepta la conexión pero nunca termina
+  de responder, algo que le pasa seguido — un `fetch()` normal se queda
+  esperando esa respuesta para siempre. El código ya tenía reintentos (3
+  intentos con una pausa entre cada uno) desde la corrección de la sección
+  25, pero esos reintentos solo se disparaban cuando el pedido fallaba con
+  un error — un pedido que simplemente nunca responde no falla nunca, así
+  que nunca llegaba a reintentar ni a mostrar el aviso de error: se quedaba
+  con el mensaje de "Actualizando gráfico…" pegado indefinidamente, que es
+  exactamente el síntoma que describió Lucas ("si uno sale y vuelve a
+  entrar una moneda se queda cargando").
+- **La corrección**: se agregó un helper compartido (`fetchWithTimeout` en
+  `assets/js/api.js`, disponible en todas las páginas) que cancela el
+  pedido con un `AbortController` si no hay respuesta dentro de un tiempo
+  límite (9 segundos para el histórico del gráfico, 8 segundos para el
+  precio en vivo). Pasado ese tiempo, el pedido "colgado" se convierte en
+  un error normal, que dispara el mismo mecanismo de reintentos y el mismo
+  aviso de error con botón "Reintentar" que ya existía — ya no hay ningún
+  camino en el que la pantalla se quede esperando para siempre. Se aplicó
+  en los cuatro lugares del panel de trading que llaman directamente a
+  CoinGecko o a gold-api.com (histórico del gráfico, precio en vivo de
+  criptos, precio en vivo de metales, y el precio único que se usa para
+  liquidar una operación Sube/Baja) y en el ticker de precios del
+  dashboard.
+- **Verificado**: se simuló una API de CoinGecko que se cuelga por
+  completo (nunca responde) — sin la corrección, la pantalla se hubiera
+  quedado "cargando" para siempre; con la corrección, a los ~30 segundos
+  (3 intentos x ~9s + las pausas entre reintentos) aparece el aviso de
+  error con "Reintentar", y al restaurar la conexión y apretar
+  "Reintentar", el gráfico carga con normalidad.
+- **Dashboard menos saturado**: a pedido de Lucas, el resumen de balance
+  (Balance total / Equity total / P/L flotante / Billeteras activas) ahora
+  aparece arriba de todo, justo debajo del encabezado — antes había que
+  bajar pasando tres banners grandes para verlo. El banner de "Panel de
+  Trading Zenith" (el que lleva a las gráficas) quedó justo debajo del
+  balance. Los banners grandes de "Comunidad Zenith" e "Insignias Zenith"
+  se quitaron del cuerpo del dashboard — ahora son dos íconos chiquitos
+  (🏅 Insignias, 💬 Comunidad) en la barra superior, junto al perfil, tanto
+  en el dashboard como en el panel de trading. Siguen llevando exactamente
+  a las mismas páginas de siempre (`insignias.html`, `community.html`),
+  solo que ya no ocupan todo el ancho de la pantalla.
+- **Pantalla de acceso (`index.html`) en celular**: antes, por debajo de
+  860px de ancho, el panel izquierdo decorativo (`.auth-aside`, con la
+  animación de "lluvia" de símbolos de inversión — ver
+  `assets/js/invest-rain.js`) se ocultaba por completo, dejando solo el
+  formulario de login sobre fondo liso — se veía como una pantalla
+  genérica sin identidad de marca. Ahora en celular ese panel se conserva
+  como una franja compacta arriba del formulario, con la misma animación
+  de lluvia y la marca, recortando solo el contenido más largo (párrafo
+  explicativo, tarjetas de "Seguridad/Mercados globales/Análisis
+  inteligente", callout de IA) para que no sature una pantalla chica. La
+  barra superior del resto del sitio también se hizo más compacta en
+  celular (se oculta el nombre de usuario en texto y el texto junto al
+  logo, dejando solo íconos) ahora que suma los dos nuevos accesos de
+  Insignias/Comunidad.
+- Nada de esto cambia cómo se ven los datos en sí (ningún número
+  inventado, ninguna cifra de mercado que no venga de CoinGecko/gold-api
+  real) — son mejoras de confiabilidad de conexión y de organización
+  visual únicamente.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

@@ -6,6 +6,26 @@ const USER_KEY = 'zenith_user';
 const SITE_ACCESS_KEY = 'zenith_site_access';
 const ADMIN_TOKEN_KEY = 'zenith_admin_token';
 
+// Un fetch() normal no tiene límite de tiempo propio: si CoinGecko o
+// gold-api.com "se cuelgan" (aceptan la conexión pero nunca responden nada —
+// muy típico de la API gratuita de CoinGecko, que Lucas describe como que
+// "pierde mucha conectividad") el fetch se queda esperando indefinidamente
+// y la pantalla se queda "pegada cargando" para siempre, sin que salte
+// ningún error que dispare un reintento o un aviso. Este helper cancela el
+// pedido si no hay respuesta dentro de timeoutMs, convirtiendo ese cuelgue
+// en un error normal que el código que llama ya sabe manejar (reintentar,
+// mostrar "sin conexión", etc.) — se usa en todos los fetch directos a
+// CoinGecko/gold-api en trading-panel.js y dashboard.js.
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function triggerBlobDownload(blob, filename) {
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');

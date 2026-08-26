@@ -357,7 +357,8 @@ a.brand:hover {
   opacity: 0.82;
 }
 
-.back-arrow-btn {
+.back-arrow-btn,
+.icon-nav-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -371,10 +372,17 @@ a.brand:hover {
   text-decoration: none;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.back-arrow-btn:hover {
+.back-arrow-btn:hover,
+.icon-nav-btn:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
   color: var(--text-primary);
+}
+
+/* Íconos chiquitos de Insignias/Comunidad en la barra superior — reemplazan
+   los banners grandes que antes ocupaban todo el ancho del dashboard. */
+.icon-nav-btn {
+  font-size: 15px;
 }
 
 .brand-mark {
@@ -2799,8 +2807,37 @@ a.brand:hover {
 @media (max-width: 860px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .zenith-stat-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Pantalla de acceso en celular: antes esto ocultaba por completo el
+     panel izquierdo (.auth-aside) y dejaba solo el formulario sobre fondo
+     liso — se veía como una pantalla genérica sin identidad. Ahora se
+     conserva como una franja superior compacta con la misma lluvia de
+     símbolos que hay en la versión de escritorio (ver invest-rain.js),
+     recortando solo el contenido más largo (párrafo, tarjetas de
+     confianza, callout de IA) para que no sature una pantalla chica. */
   .auth-shell { grid-template-columns: 1fr; }
-  .auth-aside { display: none; }
+  .auth-aside {
+    min-height: 190px;
+    padding: 22px 20px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    justify-content: flex-start;
+    gap: 14px;
+  }
+  .auth-aside p,
+  .aside-stats,
+  .ai-callout,
+  .aside-disclaimer {
+    display: none;
+  }
+  .auth-aside h1 {
+    font-size: 21px;
+    line-height: 1.3;
+    margin: 0;
+    max-width: 100%;
+  }
+  .auth-main { padding: 28px 20px 40px; }
+
   .trading-cta { flex-direction: column; align-items: stretch; text-align: center; }
   .insignias-grid { grid-template-columns: repeat(2, 1fr); }
   .insignias-cta { flex-direction: column; align-items: stretch; text-align: center; }
@@ -2812,4 +2849,16 @@ a.brand:hover {
   .field-row { grid-template-columns: 1fr; }
   .page { padding: 24px 16px 48px; }
   .insignias-grid { grid-template-columns: 1fr; }
+  .auth-aside { min-height: 160px; padding: 18px 16px; }
+  .auth-aside h1 { font-size: 19px; }
+  .auth-main { padding: 22px 16px 32px; }
+
+  /* Barra superior más compacta en celular: con los íconos de Insignias y
+     Comunidad sumados al perfil, mostrar además el nombre de usuario y la
+     insignia de rango en texto saturaba la barra — se deja solo el avatar
+     (el nombre completo sigue disponible dentro de "Mi perfil"). */
+  .topbar { padding: 10px 14px; gap: 6px; }
+  .topbar-right { gap: 6px; }
+  .user-chip-text { display: none; }
+  .topbar .brand span { display: none; }
 }
