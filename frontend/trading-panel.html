@@ -114,7 +114,13 @@
       <span class="ohlc-item">Vol <strong id="ohlc-volume">—</strong></span>
     </div>
 
-    <div id="panel-chart-container"></div>
+    <div class="panel-chart-canvas-wrap">
+      <div id="panel-chart-container"></div>
+      <div id="chart-loading-overlay" class="chart-loading-overlay">
+        <span class="chart-loading-spinner"></span>
+        <span>Actualizando gráfico…</span>
+      </div>
+    </div>
     <div id="panel-rsi-container" class="panel-rsi-container" style="display:none;">
       <div class="panel-rsi-label">RSI (14)</div>
       <div id="panel-rsi-chart" style="position:absolute; inset:0;"></div>

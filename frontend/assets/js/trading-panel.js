@@ -122,6 +122,14 @@ let barDurationSeconds = 1800; // se recalcula con cada carga según el tamaño 
 let metalCandleCache = {};
 const METAL_BAR_SECONDS = 30;
 
+// Caché del histórico real ya traído por activo+plazo, para que volver a
+// un activo que ya se visitó en esta sesión se vea al instante (en vez de
+// esperar otra vez a CoinGecko) mientras se refresca en segundo plano.
+// chartLoadToken evita el "medio bug" de una respuesta vieja llegando
+// tarde y pisando a una más nueva cuando se cambia de activo rápido.
+let cryptoCandleCache = {};
+let chartLoadToken = 0;
+
 let instrumentCategory = 'all'; // 'all' | 'crypto' | 'metal'
 let instrumentSearch = '';
 
@@ -843,32 +851,63 @@ function updateLiveCandle(assetId, price) {
   if (!isHoveringChart) showLastCandleOhlc();
 }
 
+function showChartLoading(visible) {
+  const overlay = document.getElementById('chart-loading-overlay');
+  if (overlay) overlay.classList.toggle('is-visible', visible);
+}
+
+function renderActiveCandles() {
+  renderPriceSeries();
+  renderVolumeSeries();
+  updateIndicatorSeries();
+  if (chart) chart.timeScale().fitContent();
+  if (rsiChart) rsiChart.timeScale().fitContent();
+  if (!isHoveringChart) showLastCandleOhlc();
+}
+
 // Los metales no tienen historial gratuito (ver nota arriba de METAL_META):
 // no hay nada que "cargar" — solo se muestra lo que ya se haya acumulado
 // en vivo para ese activo (posiblemente nada todavía, si se acaba de
-// seleccionar por primera vez en esta sesión).
+// seleccionar por primera vez en esta sesión). Esto es instantáneo, sin
+// pedidos de red, así que nunca necesita el overlay de carga.
 function loadMetalChartData(assetId) {
   if (!priceSeries) return;
   if (!metalCandleCache[assetId]) metalCandleCache[assetId] = { candles: [], barDurationSeconds: METAL_BAR_SECONDS };
 
   rawCandles = metalCandleCache[assetId].candles;
   barDurationSeconds = metalCandleCache[assetId].barDurationSeconds;
-
-  renderPriceSeries();
-  renderVolumeSeries();
-  updateIndicatorSeries();
-
-  if (chart) chart.timeScale().fitContent();
-  if (rsiChart) rsiChart.timeScale().fitContent();
-  if (!isHoveringChart) showLastCandleOhlc();
+  renderActiveCandles();
 }
 
+// chartLoadToken evita el "medio bug" de cambiar de activo rápido: si dos
+// cargas quedan en el aire a la vez (por ejemplo, click en BTC y enseguida
+// en ETH), la respuesta de la más vieja ya no puede pisar a la más nueva
+// aunque llegue después por la red — solo se aplica si su token todavía es
+// el más reciente en el momento en que responde.
 async function loadChartData(assetId, timeframeKey) {
   if (!priceSeries) return;
   if (PANEL_META[assetId]?.category === 'metal') {
+    chartLoadToken += 1; // invalida cualquier carga de cripto que siga en el aire
+    showChartLoading(false); // los metales no usan el overlay: nunca hay pedido de red que esperar
     loadMetalChartData(assetId);
     return;
   }
+
+  const myToken = ++chartLoadToken;
+  const cacheKey = `${assetId}:${timeframeKey}`;
+  const cached = cryptoCandleCache[cacheKey];
+
+  // Si ya se visitó este activo/plazo en esta sesión, se muestra al
+  // instante con lo que ya se tiene mientras se refresca en segundo plano
+  // — así cambiar de activo no se siente "colgado" esperando a CoinGecko.
+  if (cached) {
+    rawCandles = cached.candles;
+    barDurationSeconds = cached.barDurationSeconds;
+    renderActiveCandles();
+  } else {
+    showChartLoading(true);
+  }
+
   const timeframe = TIMEFRAME_CONFIG[timeframeKey] || TIMEFRAME_CONFIG['1D'];
   try {
     const [ohlcRes, volRes] = await Promise.all([
@@ -908,7 +947,7 @@ async function loadChartData(assetId, timeframeKey) {
     const gaps = [];
     for (let i = 1; i < deduped.length; i++) gaps.push(deduped[i].time - deduped[i - 1].time);
     gaps.sort((a, b) => a - b);
-    barDurationSeconds = gaps[Math.floor(gaps.length / 2)] || 1800;
+    const freshBarDuration = gaps[Math.floor(gaps.length / 2)] || 1800;
 
     // Empareja cada vela con su volumen real (dato independiente de CoinGecko),
     // sumando los puntos de volumen que caen dentro del rango de tiempo de esa vela.
@@ -917,7 +956,7 @@ async function loadChartData(assetId, timeframeKey) {
       .sort((a, b) => a.time - b.time);
     let vIdx = 0;
     deduped.forEach((c, i) => {
-      const bucketEnd = i + 1 < deduped.length ? deduped[i + 1].time : c.time + barDurationSeconds;
+      const bucketEnd = i + 1 < deduped.length ? deduped[i + 1].time : c.time + freshBarDuration;
       let sum = 0;
       let found = false;
       while (vIdx < volPoints.length && volPoints[vIdx].time < bucketEnd) {
@@ -927,18 +966,22 @@ async function loadChartData(assetId, timeframeKey) {
       c.volume = found ? sum : 0;
     });
 
-    if (assetId !== selectedAsset || timeframeKey !== selectedTimeframe) return; // cambió mientras cargaba
+    cryptoCandleCache[cacheKey] = { candles: deduped, barDurationSeconds: freshBarDuration };
+
+    // Si mientras esperábamos la respuesta el usuario ya cambió de activo,
+    // de plazo, o disparó otra carga más nueva, esta respuesta llegó tarde
+    // — se guarda igual en caché (para la próxima vez) pero no se dibuja.
+    if (myToken !== chartLoadToken) return;
+    if (assetId !== selectedAsset || timeframeKey !== selectedTimeframe) return;
 
     rawCandles = deduped;
-    renderPriceSeries();
-    renderVolumeSeries();
-    updateIndicatorSeries();
-
-    chart.timeScale().fitContent();
-    if (rsiChart) rsiChart.timeScale().fitContent();
-    if (!isHoveringChart) showLastCandleOhlc();
+    barDurationSeconds = freshBarDuration;
+    renderActiveCandles();
   } catch (err) {
     // Silencioso: el precio en vivo y las operaciones no dependen del gráfico.
+    // Si no había nada en caché para mostrar, al menos se quita el "cargando".
+  } finally {
+    if (myToken === chartLoadToken) showChartLoading(false);
   }
 }
 

@@ -1475,12 +1475,50 @@ a.brand:hover {
 .panel-price-change.is-down { color: var(--critical); }
 .panel-price-change.is-flat { color: var(--text-muted); }
 
-#panel-chart-container {
+.panel-chart-canvas-wrap {
+  position: relative;
   flex: 1;
   min-height: 380px;
+}
+
+#panel-chart-container {
+  position: absolute;
+  inset: 0;
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--page-bg);
+}
+
+/* Aviso mientras se cambia de activo/plazo — evita que el cambio se sienta
+   "colgado" mientras se espera la respuesta real de CoinGecko/gold-api. */
+.chart-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(13, 13, 13, 0.55);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 5;
+  pointer-events: none;
+}
+:root[data-theme="light"] .chart-loading-overlay { background: rgba(244, 243, 239, 0.65); }
+.chart-loading-overlay.is-visible { display: flex; }
+
+.chart-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: chart-loading-spin 0.7s linear infinite;
+}
+@keyframes chart-loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 .panel-chart-note {
@@ -1644,7 +1682,7 @@ a.brand:hover {
   z-index: 500;
   min-height: unset;
 }
-.panel-chart-card.is-fullscreen #panel-chart-container {
+.panel-chart-card.is-fullscreen .panel-chart-canvas-wrap {
   min-height: 0;
 }
 
