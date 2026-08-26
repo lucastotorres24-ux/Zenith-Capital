@@ -1,18 +1,18 @@
 # Trading Backend (proyecto de aprendizaje)
 
 Backend simple en Node.js + Express para un dashboard de cuentas de trading.
-Datos persistidos en un archivo JSON (`data/data.json`, se crea solo) + login con JWT.
+Datos persistidos en MongoDB Atlas (gratis para siempre, ver sección 12) + login con JWT.
 
-> Actualizado: ya no usa datos en memoria. `data/store.js` ahora lee y escribe
-> en `data/data.json` (ver `data/db.js`), así que los datos sobreviven a
-> reinicios del servidor y a redeploys. Se usa un archivo JSON y no SQLite a
-> propósito: SQLite (vía `better-sqlite3`) requiere compilar un módulo nativo
-> con Python + Visual Studio Build Tools cuando no hay un binario
-> precompilado para tu versión de Node, lo cual rompe la instalación en
-> muchas máquinas Windows. Un archivo JSON evita ese problema por completo.
+> Actualizado (agosto 2026): los datos ahora se guardan en MongoDB Atlas en
+> vez de un archivo JSON local (ver `data/db.js` y la sección 12 más abajo)
+> — así sobreviven de verdad a los reinicios/redeploys de Render, incluso
+> en el plan gratis (antes se perdían porque el disco de ese plan es
+> efímero). Hace falta la variable de entorno `MONGODB_URI` para arrancar
+> el servidor, tanto en tu computadora como en Render.
 > También se agregó un límite de intentos de login/registro
-> (`express-rate-limit`) para frenar fuerza bruta, y el servidor ya no
-> arranca si dejaste el `JWT_SECRET` de ejemplo.
+> (`express-rate-limit`) para frenar fuerza bruta, el servidor ya no
+> arranca si dejaste el `JWT_SECRET` de ejemplo, y el registro ahora exige
+> un correo de un dominio real (no cualquier cosa inventada).
 
 ## 1. Requisitos
 - Node.js 18 o superior instalado (`node -v` para verificar)
@@ -25,7 +25,9 @@ npm install
 cp .env.example .env
 ```
 
-Abre `.env` y cambia `JWT_SECRET` por cualquier texto largo y aleatorio.
+Abre `.env` y cambia `JWT_SECRET` por cualquier texto largo y aleatorio, y
+completa `MONGODB_URI` con tu cadena de conexión de MongoDB Atlas (ver
+sección 12 — es obligatoria, el servidor no arranca sin ella).
 
 ## 3. Correr el servidor
 
@@ -197,11 +199,11 @@ trading-backend/
 
 ## 11. Desplegar esto con un dominio real (Render, gratis)
 
-Este backend guarda datos en un archivo (JSON) y corre como un proceso
-continuo, así que el hosting tiene que mantenerlo "vivo" — no sirve un
-hosting 100% *serverless* como Vercel/Netlify para esta parte (esos son
-ideales para el frontend, no para esta API). Render es gratis para empezar
-y soporta justo este tipo de proceso:
+Este backend corre como un proceso continuo, así que el hosting tiene que
+mantenerlo "vivo" — no sirve un hosting 100% *serverless* como
+Vercel/Netlify para esta parte (esos son ideales para el frontend, no para
+esta API). Render es gratis para empezar y soporta justo este tipo de
+proceso:
 
 1. Sube este proyecto a un repositorio de GitHub (`git init`, `git add .`, `git commit`, luego lo conectas a un repo nuevo en GitHub).
 2. Entra a [render.com](https://render.com) y crea una cuenta (puedes usar tu cuenta de GitHub).
@@ -212,12 +214,36 @@ y soporta justo este tipo de proceso:
    - **Start Command**: `npm start`
 5. En la sección **Environment**, agrega las variables:
    - `JWT_SECRET` → un texto largo y aleatorio (no el de ejemplo)
+   - `MONGODB_URI` → tu cadena de conexión de MongoDB Atlas (ver sección 12 más abajo) — **obligatoria**, sin ella el servidor no arranca
    - `NODE_ENV` → `production`
+   - `ADMIN_CODE` → el código para entrar al panel de administrador
    - `OPENAI_API_KEY` → tu key real, si quieres que el análisis con IA funcione en producción
    - `OPENAI_MODEL` → opcional, revisa el valor vigente en tu dashboard de OpenAI
 6. Deploy. Render te da una URL tipo `https://tu-servicio.onrender.com` — pruébala con `curl https://tu-servicio.onrender.com/api/health`.
 7. Cuando tengas el dominio comprado (Cloudflare Registrar, Namecheap, etc.), en Render ve a **Settings → Custom Domain** y sigue las instrucciones para apuntar tu DNS ahí.
 
-**Nota sobre los datos en el plan gratis:** Render Free **no** permite agregar un Disk persistente (eso es de pago) — el sistema de archivos es efímero, así que `data/data.json` se resetea cada vez que el servicio se reinicia, se redespliega, o se "duerme" por inactividad (~15 min sin tráfico en el plan gratis). El usuario demo se vuelve a crear solo en cada arranque; cualquier cuenta que registres en la versión desplegada puede desaparecer en algún reinicio. Para un proyecto de práctica sin dinero real esto no es grave. Si más adelante quieres que los datos persistan de verdad, la opción es una base de datos gestionada (ej. Render Postgres, gratis los primeros 30 días) en vez de un archivo local.
+**Nota sobre los datos (agosto 2026):** antes, este backend guardaba todo
+en un archivo JSON dentro del propio disco de Render, y ese disco se
+resetea cada vez que el servicio se reinicia, se redespliega, o se
+"duerme" por inactividad (~15 min sin tráfico en el plan gratis) —
+Render Free no permite agregar un Disk persistente para evitarlo (eso es
+de pago). Por eso las cuentas nuevas desaparecían con el tiempo. Ahora los
+datos se guardan en MongoDB Atlas (ver sección 12), un servidor aparte que
+no le afecta que Render reinicie — los datos quedan para siempre.
 
 Railway funciona de forma muy similar si prefieres esa opción.
+
+## 12. Base de datos permanente: MongoDB Atlas (gratis para siempre)
+
+Sin esto el servidor no arranca (falta la variable `MONGODB_URI`). Son
+unos 5 minutos, una sola vez:
+
+1. Entra a [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas) y crea una cuenta gratis (puedes usar Google).
+2. Al crear tu primer proyecto, elige el plan **M0 (Free)** — es gratis para siempre, no expira como el Postgres gratis de Render.
+3. En **Security → Database Access**, crea un usuario de base de datos (usuario + contraseña) — anótalos, los necesitas en el paso 5.
+4. En **Security → Network Access**, agrega la IP `0.0.0.0/0` ("Allow access from anywhere") — Render no tiene una IP fija en los planes económicos, así que hace falta permitir cualquier IP para que el backend pueda conectarse.
+5. En tu clúster, botón **Connect → Drivers**, copia el "connection string" — se ve así: `mongodb+srv://tu_usuario:tu_contraseña@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority`. Reemplaza `tu_usuario`/`tu_contraseña` por los del paso 3.
+6. Esa cadena completa es el valor de `MONGODB_URI`:
+   - En tu computadora, para probar localmente: pégala en tu archivo `.env`.
+   - En Render, para el sitio en línea: pégala en **Environment → Add Environment Variable**, con el nombre `MONGODB_URI`.
+7. No hace falta crear ninguna base de datos ni colección a mano — el backend las crea solas la primera vez que arranca.

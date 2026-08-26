@@ -7,7 +7,6 @@
 // solo Lucas conoce.
 
 const express = require('express');
-const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { requireAdmin } = require('../middleware/admin');
@@ -31,7 +30,7 @@ const {
   requestHoldingDelete,
 } = require('../data/store');
 const { getAllTickets, replyToTicket } = require('../data/support');
-const { getFilePath } = require('../data/files');
+const { getFileBuffer } = require('../data/files');
 const {
   getAdminConfig: getZenithConfig,
   updateConfig: updateZenithConfig,
@@ -252,18 +251,16 @@ router.get('/documents', requireAdmin, (req, res) => {
 });
 
 // GET /api/admin/documents/:id/download -> descarga cualquier documento
-router.get('/documents/:id/download', requireAdmin, (req, res) => {
+router.get('/documents/:id/download', requireAdmin, async (req, res) => {
   const doc = getDocumentById(Number(req.params.id));
   if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
 
-  const fullPath = getFilePath(doc.storedName);
-  if (!fullPath || !fs.existsSync(fullPath)) {
-    return res.status(404).json({ error: 'El archivo ya no está disponible en el servidor' });
-  }
+  const { buffer, error } = await getFileBuffer(doc.storedName);
+  if (error) return res.status(404).json({ error });
 
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${doc.filename.replace(/"/g, '')}"`);
-  fs.createReadStream(fullPath).pipe(res);
+  res.send(buffer);
 });
 
 // ---- Moneda simulada Zenith (ZNT) ----

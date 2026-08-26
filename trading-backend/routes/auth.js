@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
+const dns = require('dns');
 const {
   findUserByUsername,
   createUser,
@@ -14,10 +15,46 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 function digitsOnly(str) {
   return String(str || '').replace(/[^\d]/g, '');
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+
+// A pedido de Lucas: que solo se pueda registrar con "correos reales", no
+// cualquier cosa inventada. No mandamos un correo de confirmación (eso
+// necesitaría contratar un servicio externo de envío de correos) — en vez
+// de eso, se revisa que el DOMINIO del correo exista de verdad y esté
+// configurado para recibir correo (registro MX, o al menos A/AAAA como
+// respaldo), usando el propio sistema de nombres de dominio de internet
+// (DNS), que es gratis y no necesita ninguna cuenta ni clave. Esto rechaza
+// dominios inventados como "asdf@asdf123.com" — no puede confirmar que la
+// bandeja de entrada específica exista, pero si el dominio ni siquiera
+// puede recibir correo, seguro que la dirección no es real.
+async function domainCanReceiveEmail(domain) {
+  let sawOnlyTimeouts = true;
+  const lookups = [dns.promises.resolveMx, dns.promises.resolve4, dns.promises.resolve6];
+
+  for (const lookup of lookups) {
+    try {
+      const result = await withTimeout(lookup(domain), 4000);
+      if (result && result.length > 0) return true;
+    } catch (err) {
+      if (err.message !== 'timeout') sawOnlyTimeouts = false;
+    }
+  }
+  // Si todos los intentos fallaron por demora (no porque el dominio no
+  // exista), es más probable que sea un problema de red pasajero del
+  // servidor que un correo falso — se deja pasar para no bloquear
+  // registros válidos por una falla nuestra.
+  return sawOnlyTimeouts;
 }
 
 // Protección básica contra fuerza bruta: máximo N intentos por IP cada 15 min
@@ -67,47 +104,59 @@ router.post('/login', (req, res) => {
 });
 
 // POST /api/auth/register
-router.post('/register', (req, res) => {
-  const { username, password, fullName, email, phone, acceptedTerms } = req.body;
+router.post('/register', async (req, res) => {
+  try {
+    const { username, password, fullName, email, phone, acceptedTerms } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
-  }
-  if (username.length < 3 || password.length < 8) {
-    return res.status(400).json({
-      error: 'El usuario debe tener al menos 3 caracteres y la contraseña al menos 8',
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
+    }
+    if (username.length < 3 || password.length < 8) {
+      return res.status(400).json({
+        error: 'El usuario debe tener al menos 3 caracteres y la contraseña al menos 8',
+      });
+    }
+    if (!fullName || !String(fullName).trim()) {
+      return res.status(400).json({ error: 'El nombre completo es requerido' });
+    }
+    const trimmedEmail = String(email || '').trim();
+    if (!email || !EMAIL_REGEX.test(trimmedEmail)) {
+      return res.status(400).json({ error: 'Ingresa un correo válido' });
+    }
+    const emailDomain = trimmedEmail.split('@')[1];
+    if (!(await domainCanReceiveEmail(emailDomain))) {
+      return res.status(400).json({
+        error: `El dominio "${emailDomain}" no existe o no puede recibir correos — usa tu correo real (Gmail, Outlook, Hotmail, etc.)`,
+      });
+    }
+    const phoneDigits = digitsOnly(phone);
+    if (phoneDigits.length < 7 || phoneDigits.length > 15) {
+      return res.status(400).json({ error: 'Ingresa un número de celular válido' });
+    }
+    if (acceptedTerms !== true) {
+      return res.status(400).json({ error: 'Debes aceptar los términos y condiciones para registrarte' });
+    }
+
+    const exists = findUserByUsername(username);
+    if (exists) {
+      return res.status(409).json({ error: 'El usuario ya existe' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const newUser = createUser({
+      username,
+      passwordHash,
+      fullName: String(fullName).trim(),
+      email: trimmedEmail,
+      phone: phoneDigits,
+      termsAcceptedAt: new Date().toISOString(),
     });
-  }
-  if (!fullName || !String(fullName).trim()) {
-    return res.status(400).json({ error: 'El nombre completo es requerido' });
-  }
-  if (!email || !EMAIL_REGEX.test(String(email).trim())) {
-    return res.status(400).json({ error: 'Ingresa un correo válido' });
-  }
-  const phoneDigits = digitsOnly(phone);
-  if (phoneDigits.length < 7 || phoneDigits.length > 15) {
-    return res.status(400).json({ error: 'Ingresa un número de celular válido' });
-  }
-  if (acceptedTerms !== true) {
-    return res.status(400).json({ error: 'Debes aceptar los términos y condiciones para registrarte' });
-  }
 
-  const exists = findUserByUsername(username);
-  if (exists) {
-    return res.status(409).json({ error: 'El usuario ya existe' });
+    res.status(201).json(newUser);
+  } catch (err) {
+    console.error('Error al registrar usuario:', err);
+    res.status(500).json({ error: 'Error del servidor, intenta de nuevo en un momento' });
   }
-
-  const passwordHash = bcrypt.hashSync(password, 10);
-  const newUser = createUser({
-    username,
-    passwordHash,
-    fullName: String(fullName).trim(),
-    email: String(email).trim(),
-    phone: phoneDigits,
-    termsAcceptedAt: new Date().toISOString(),
-  });
-
-  res.status(201).json(newUser);
 });
 
 // GET /api/auth/me -> perfil completo del usuario logueado (para el modal

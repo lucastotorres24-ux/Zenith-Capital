@@ -1,16 +1,42 @@
-// "Base de datos" en un archivo JSON plano (data/data.json), leído y escrito
-// con el módulo `fs` que ya trae Node. Antes esto usaba better-sqlite3, pero
-// ese paquete necesita compilarse con Python + un compilador de C++ cuando
-// no hay un binario ya hecho para tu versión de Node/SO — eso rompe la
-// instalación en muchas máquinas Windows sin herramientas de compilación
-// instaladas. Para el tamaño de este proyecto, un archivo JSON alcanza de
-// sobra y funciona igual en cualquier equipo sin instalar nada extra.
-
-const fs = require('fs');
-const path = require('path');
+// "Base de datos": desde agosto 2026 esto se guarda en MongoDB Atlas (una
+// base de datos en la nube, gratis para siempre en su plan más chico) en
+// vez de un archivo local. Antes se guardaba en un archivo JSON dentro del
+// propio servidor (data/data.json) — eso funcionaba bien para probar en tu
+// computadora, pero en Render (donde vive el sitio en línea) ese archivo
+// se borra cada vez que el servicio se reinicia o se "duerme" por
+// inactividad, porque el plan gratis de Render no guarda archivos de forma
+// permanente. Eso hacía que las cuentas nuevas desaparecieran con el
+// tiempo. Mongo Atlas sí guarda los datos para siempre, en un servidor
+// aparte que no se reinicia con tu backend.
+//
+// Para no tener que tocar el resto del código (data/store.js,
+// data/support.js, data/community.js, data/zenithCoin.js y todas las
+// rutas siguen llamando `load()`/`save()` exactamente igual que antes, de
+// forma síncrona), este archivo mantiene una COPIA en memoria de todos los
+// datos (`cachedDb`) que se llena una sola vez al arrancar el servidor
+// (ver `connect()`, llamado desde server.js antes de aceptar pedidos).
+// `load()` simplemente devuelve esa copia en memoria (ya lista, sin
+// esperar nada). `save()` actualiza esa copia al instante Y además manda
+// el cambio a MongoDB en segundo plano, sin hacer esperar al usuario. Si
+// justo en ese instante se cayera la conexión a internet del servidor, se
+// perdería como mucho el último cambio (no todo el historial) — un riesgo
+// mucho menor que perder absolutamente todo cada vez que Render reinicia,
+// que es lo que pasaba antes.
 const bcrypt = require('bcryptjs');
+const { MongoClient } = require('mongodb');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.json');
+const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'zenith_capital';
+const COLLECTION_NAME = 'app_state';
+const DOC_ID = 'zenith_state';
+
+let cachedDb = null;
+let mongoCollection = null;
+let mongoDbInstance = null;
+// Encadena los guardados uno detrás de otro (en vez de dispararlos todos a
+// la vez) para que dos cambios casi simultáneos no se crucen en el camino
+// y uno viejo termine pisando a uno más nuevo.
+let saveQueue = Promise.resolve();
 
 function seedData() {
   const demoHash = bcrypt.hashSync('demo1234', 10);
@@ -80,23 +106,11 @@ function seedData() {
   };
 }
 
-function save(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-}
-
-function load() {
-  if (!fs.existsSync(DB_PATH)) {
-    const data = seedData();
-    save(data);
-    console.log('Base de datos inicializada con datos de ejemplo (usuario: demo / demo1234)');
-    return data;
-  }
-  const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  const data = JSON.parse(raw);
-
-  // Migración simple: si el archivo viene de una versión anterior (sin
-  // depósitos todavía), se completan los campos que falten sin perder los
-  // datos que ya existen.
+// Revisa los datos que vinieron de MongoDB y completa cualquier campo que
+// le falte (por ejemplo, porque se guardaron con una versión anterior de
+// esta app) sin perder nada de lo que ya existía. Devuelve si hizo falta
+// completar algo, para guardar de vuelta solo cuando de verdad cambió algo.
+function runMigrations(data) {
   let migrated = false;
   if (!Array.isArray(data.deposits)) {
     data.deposits = [];
@@ -280,9 +294,85 @@ function load() {
     migrated = true;
   }
 
-  if (migrated) save(data);
-
-  return data;
+  return { data, migrated };
 }
 
-module.exports = { load, save };
+// Manda el estado actual a MongoDB en segundo plano. Los guardados se
+// encadenan uno detrás de otro (nunca al mismo tiempo) para que dos
+// cambios casi simultáneos no se crucen. Si un guardado falla (por
+// ejemplo, un corte de internet de un segundo), se avisa por consola pero
+// NO se rompe la respuesta que ya se le dio al usuario — el próximo
+// guardado exitoso deja todo al día de nuevo.
+function persist(data) {
+  saveQueue = saveQueue
+    .then(() => mongoCollection.replaceOne({ _id: DOC_ID }, { _id: DOC_ID, ...data }, { upsert: true }))
+    .catch((err) => {
+      console.error(
+        '⚠️  No se pudo guardar el último cambio en MongoDB (si el servidor se reinicia justo ahora, ese cambio en particular podría perderse):',
+        err.message
+      );
+    });
+  return saveQueue;
+}
+
+// Se llama una sola vez, al arrancar el servidor (ver server.js), ANTES de
+// aceptar cualquier pedido. Se conecta a MongoDB Atlas con la dirección de
+// MONGODB_URI, trae los datos guardados (o crea los de ejemplo la primera
+// vez que se usa) y los deja listos en memoria.
+async function connect() {
+  if (!MONGODB_URI) {
+    throw new Error(
+      'Falta la variable de entorno MONGODB_URI — sin ella el servidor no tiene dónde guardar los datos de forma permanente. Revisa el archivo .env (en tu computadora) o las "Environment Variables" de Render (en línea). Ver .env.example para el formato esperado.'
+    );
+  }
+
+  const client = new MongoClient(MONGODB_URI);
+  await client.connect();
+  mongoDbInstance = client.db(MONGODB_DB_NAME);
+  mongoCollection = mongoDbInstance.collection(COLLECTION_NAME);
+
+  const existing = await mongoCollection.findOne({ _id: DOC_ID });
+  if (existing) {
+    delete existing._id;
+    const { data, migrated } = runMigrations(existing);
+    cachedDb = data;
+    if (migrated) await persist(cachedDb);
+    console.log('Conectado a MongoDB — datos existentes cargados correctamente.');
+  } else {
+    cachedDb = seedData();
+    await mongoCollection.insertOne({ _id: DOC_ID, ...cachedDb });
+    console.log('Conectado a MongoDB — no había datos todavía, se inicializó con datos de ejemplo (usuario: demo / demo1234).');
+  }
+}
+
+// Devuelve los datos ya cargados en memoria — instantáneo, sin esperar
+// nada, exactamente igual que antes cuando esto leía un archivo local.
+function load() {
+  if (!cachedDb) {
+    throw new Error(
+      'La base de datos todavía no está lista (el servidor no llamó a connect() antes de recibir pedidos, o MongoDB no conectó a tiempo). Reinicia el servidor.'
+    );
+  }
+  return cachedDb;
+}
+
+// Actualiza la copia en memoria al instante (todo el resto del código
+// sigue funcionando exactamente igual que antes) y además guarda el
+// cambio en MongoDB en segundo plano, sin hacer esperar al usuario.
+function save(data) {
+  cachedDb = data;
+  persist(data);
+}
+
+// Para otros archivos que necesitan guardar cosas en MongoDB pero NO
+// encajan en el mismo "documento único" de arriba — por ahora, solo los
+// PDFs que suben los usuarios (ver data/files.js), que se guardan cada uno
+// en su propio documento dentro de otra colección.
+function getMongoDb() {
+  if (!mongoDbInstance) {
+    throw new Error('La base de datos todavía no está lista (falta llamar a connect()).');
+  }
+  return mongoDbInstance;
+}
+
+module.exports = { load, save, connect, getMongoDb };

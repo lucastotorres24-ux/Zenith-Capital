@@ -62,6 +62,10 @@ así no hay que repetir el contexto en cada conversación.
   automática balance→equity al editar cuentas desde el panel de
   administrador, y el logo funcionando como botón de "volver al inicio"
   en todas las páginas** — ver sección 19 (agosto 2026).
+- **Base de datos permanente en MongoDB Atlas (las cuentas ya no
+  desaparecen cuando Render reinicia el servicio) y solo se puede
+  registrar con correos de dominios reales** — ver sección 20 (agosto
+  2026).
   - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
     asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
     elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
@@ -1034,6 +1038,58 @@ cambio** (no solo el símbolo).
   `support.html`) ya tenían el logo como enlace de vuelta al dashboard
   desde la tanda anterior (sección 18), así que con esto el logo funciona
   como botón de "inicio" en absolutamente todas las páginas del sitio.
+
+## 20. Base de datos permanente en MongoDB Atlas y correos reales al registrarse (agosto 2026)
+
+- **El problema que se arregló**: en Render (donde vive el sitio en línea),
+  el plan gratis de los servicios web **no guarda archivos de forma
+  permanente** — cada vez que el servicio se reinicia (algo que pasa solo,
+  después de 15 minutos sin visitas, o cada vez que se sube una
+  actualización), el disco vuelve a su estado original. Como toda la base
+  de datos vivía en un archivo (`data/data.json`) dentro de ese disco, esto
+  hacía que las cuentas nuevas "desaparecieran" del panel de administrador
+  con el tiempo, y que alguien que se registró y volvió días después ya no
+  pudiera iniciar sesión — su cuenta ya no existía en el servidor. No era
+  un error del código: era que el archivo donde vivían los datos no
+  sobrevivía a los reinicios de ese plan gratis.
+- **La solución**: los datos ahora se guardan en MongoDB Atlas, un
+  servicio de base de datos en internet aparte de Render, con un plan
+  gratis para siempre (no como el Postgres gratis de Render, que borra la
+  base de datos a los 30 días). Como es un servidor totalmente aparte, no
+  le afecta que el backend se reinicie — los datos quedan ahí para
+  siempre, sin importar cuántas veces Render duerma o reinicie el
+  servicio.
+  - `data/db.js` se reescribió para conectarse a MongoDB en vez de leer/
+    escribir el archivo local. Para no tener que tocar el resto del
+    código (todas las funciones de `data/store.js`, `data/support.js`,
+    `data/community.js`, `data/zenithCoin.js` y todas las rutas siguen
+    llamando `load()`/`save()` exactamente igual que siempre, de forma
+    instantánea), este archivo mantiene una copia de todos los datos en
+    memoria que se llena una sola vez al arrancar el servidor
+    (`connect()`, llamado desde `server.js` antes de aceptar cualquier
+    pedido) y que se manda a MongoDB en segundo plano cada vez que algo
+    cambia — sin hacer esperar al usuario.
+  - Los PDFs que suben los usuarios (perfil > Documentos) también vivían
+    como archivos sueltos en el disco del servidor con el mismo problema
+    — ahora se guardan igual, dentro de MongoDB (`data/files.js`), así que
+    tampoco se pierden con un reinicio.
+  - Nueva variable de entorno **obligatoria**: `MONGODB_URI` (la dirección
+    de conexión a tu clúster gratuito de MongoDB Atlas) — sin ella, el
+    servidor no arranca y lo explica claramente en los logs, en vez de
+    fallar de forma confusa en el primer pedido que llegue. Ver
+    `.env.example` para el formato exacto y cómo conseguirla.
+- **Solo correos reales al registrarse**: antes, el registro solo
+  comprobaba que el correo tuviera la forma básica de un correo (algo@algo
+  .algo) — aceptaba direcciones inventadas como `asdf@asdf123.com` sin
+  problema. Ahora, además de esa validación de formato, se comprueba que
+  el DOMINIO del correo exista de verdad en internet y esté configurado
+  para recibir correo (usando el propio sistema de nombres de dominio,
+  DNS — gratis, sin necesidad de crear ninguna cuenta ni pagar ningún
+  servicio). Esto rechaza dominios inventados; no llega a confirmar que la
+  bandeja de entrada específica exista (para eso haría falta mandar un
+  correo real de confirmación, lo cual sí requeriría contratar un servicio
+  externo de envío de correos — quedó fuera de esta tanda a propósito para
+  no sumar una cuenta/costo externo más).
 
 ## Restricciones de seguridad (no negociables)
 

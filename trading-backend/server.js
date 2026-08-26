@@ -17,6 +17,7 @@ const currencyRoutes = require('./routes/currency');
 const supportRoutes = require('./routes/support');
 const { requireSiteAccess } = require('./middleware/siteAccess');
 const { runDueAdminActions, runAutoInvestIfDue } = require('./data/store');
+const db = require('./data/db');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -100,6 +101,20 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+// La base de datos ahora vive en MongoDB (ver data/db.js) en vez de un
+// archivo local, así que antes de aceptar cualquier pedido hay que
+// conectarse y traer los datos guardados. Si la conexión falla (por
+// ejemplo, falta la variable MONGODB_URI o la contraseña de Mongo está
+// mal escrita), el servidor no arranca y se explica el error en los logs
+// en vez de arrancar "a medias" y fallar de forma confusa en el primer
+// pedido que llegue.
+db.connect()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('ERROR: no se pudo conectar a la base de datos (MongoDB) al arrancar el servidor:', err.message);
+    process.exit(1);
+  });

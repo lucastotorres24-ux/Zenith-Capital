@@ -1,32 +1,31 @@
-// Guarda los PDFs que los usuarios suben (perfil > Documentos) directamente
-// en el disco del servidor — igual que data/db.js hace con data.json, pero
-// para archivos binarios en vez de JSON. Solo se guarda la metadata (quién,
-// nombre, cuándo) en data.json; el archivo real vive acá.
+// Guarda los PDFs que los usuarios suben (perfil > Documentos) — desde
+// agosto 2026, en MongoDB (misma base de datos que el resto de la app, ver
+// data/db.js), cada archivo en su propio documento de la colección
+// "uploaded_files". Antes se guardaban como archivos sueltos en el disco
+// del servidor, lo cual tenía el mismo problema que el resto de los datos:
+// en Render (plan gratis), ese disco se borra en cada redeploy o reinicio,
+// así que un documento subido podía "desaparecer" sin que nadie lo haya
+// borrado a propósito. Guardándolos en MongoDB, sobreviven igual que
+// cuentas, usuarios y todo lo demás.
 //
-// Nota importante para Lucas: en Render, el disco de un servicio web normal
-// (sin "disco persistente" contratado aparte) se borra en cada redeploy o
-// reinicio — igual que ya pasa hoy con data.json. Así que los PDFs
-// sobreviven mientras el servidor esté corriendo, pero pueden perderse si
-// Render reinicia el servicio. Para un simulador de práctica es aceptable;
-// si más adelante esto maneja documentos reales, hace falta un disco
-// persistente de Render o un servicio externo (S3, etc.).
+// Solo se guarda la metadata (quién, nombre, cuándo) en el documento
+// principal de datos (ver data/store.js#addDocument); el contenido del
+// archivo en sí vive acá, identificado por su `storedName`.
 
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
+const { getMongoDb } = require('./db');
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
-
+const COLLECTION_NAME = 'uploaded_files';
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 function sanitizeFilename(name) {
-  const base = path.basename(String(name || 'documento.pdf'));
+  const base = String(name || 'documento.pdf').split(/[\\/]/).pop();
   return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'documento.pdf';
 }
 
 // Guarda un PDF recibido como base64. Devuelve { storedName, size } o
 // { error } si algo no es válido (muy grande, no parece un PDF real, etc.).
-function saveFile(userId, filename, base64Data) {
+async function saveFile(userId, filename, base64Data) {
   if (!base64Data || typeof base64Data !== 'string') {
     return { error: 'Archivo inválido' };
   }
@@ -54,23 +53,29 @@ function saveFile(userId, filename, base64Data) {
     return { error: 'Solo se permiten archivos PDF' };
   }
 
-  const userDir = path.join(UPLOADS_DIR, String(userId));
-  fs.mkdirSync(userDir, { recursive: true });
-
   const safeName = sanitizeFilename(filename);
   const storedName = `${userId}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}`;
-  const fullPath = path.join(UPLOADS_DIR, storedName);
 
-  fs.writeFileSync(fullPath, buffer);
+  await getMongoDb().collection(COLLECTION_NAME).insertOne({
+    _id: storedName,
+    userId,
+    dataBase64: buffer.toString('base64'),
+    size: buffer.length,
+    createdAt: new Date().toISOString(),
+  });
 
   return { storedName, size: buffer.length };
 }
 
-function getFilePath(storedName) {
-  // Evita que un storedName con ".." se escape del directorio de uploads.
-  const resolved = path.resolve(UPLOADS_DIR, storedName);
-  if (!resolved.startsWith(path.resolve(UPLOADS_DIR))) return null;
-  return resolved;
+// Trae el contenido de un archivo ya guardado. Devuelve { buffer } o
+// { error } si ya no existe (por ejemplo, se subió antes de esta
+// actualización y el archivo viejo se quedó en el disco anterior, que ya
+// no se usa).
+async function getFileBuffer(storedName) {
+  if (!storedName) return { error: 'Archivo no encontrado' };
+  const doc = await getMongoDb().collection(COLLECTION_NAME).findOne({ _id: storedName });
+  if (!doc) return { error: 'El archivo ya no está disponible en el servidor' };
+  return { buffer: Buffer.from(doc.dataBase64, 'base64') };
 }
 
-module.exports = { saveFile, getFilePath, MAX_FILE_BYTES };
+module.exports = { saveFile, getFileBuffer, MAX_FILE_BYTES };

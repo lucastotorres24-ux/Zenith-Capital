@@ -1,7 +1,10 @@
 // Capa de acceso a datos. Las rutas (routes/*.js) no necesitan saber cómo se
 // guardan los datos, solo llaman a estas funciones. Por dentro, cada función
-// carga el archivo data/data.json, hace el cambio, y lo vuelve a guardar —
-// simple y suficiente para el tráfico de un proyecto de práctica.
+// trae los datos con load(), hace el cambio, y lo vuelve a guardar con
+// save() — simple y suficiente para el tráfico de un proyecto de práctica.
+// Desde agosto 2026, load()/save() (ver data/db.js) guardan todo en
+// MongoDB en vez de un archivo local, pero para este archivo no cambia
+// nada: se siguen llamando exactamente igual, de forma instantánea.
 
 const { load, save } = require('./db');
 const { getCurrentSnapshot, getCandles } = require('./zenithCoin');
