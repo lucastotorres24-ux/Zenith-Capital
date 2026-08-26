@@ -1269,6 +1269,115 @@ cambio** (no solo el símbolo).
   igual que con criptomonedas — nada de esto afecta la validez de las
   operaciones, solo la profundidad del historial visual del gráfico.
 
+## 24. Corrección: el cambio de activo se demoraba o mostraba datos a medias (agosto 2026)
+
+- **Reporte del usuario**: al entrar al panel de trading y cambiar de un
+  activo a otro (por ejemplo de Bitcoin a Ethereum) varias veces seguidas,
+  el gráfico tardaba bastante en mostrar el que correspondía, o se quedaba
+  "a medias" — mostrando por momentos datos que no eran del activo
+  seleccionado.
+- **Causa real (no solo percepción)**: cada vez que se elegía un activo se
+  lanzaba una petición nueva a CoinGecko para traer su historial. Si el
+  usuario cambiaba de activo otra vez antes de que la petición anterior
+  terminara, ambas respuestas podían llegar en cualquier orden — y la más
+  vieja, si llegaba después, terminaba pisando en el gráfico a la más
+  nueva. A eso se sumaba que no había ningún aviso visual de "cargando",
+  así que la demora se sentía como si la página se hubiera trabado.
+- **Corrección aplicada** (`assets/js/trading-panel.js`):
+  - **Control de peticiones por turno** (`chartLoadToken`): cada vez que se
+    pide un historial nuevo se marca con un número que sube uno por uno.
+    Cuando la respuesta llega, se compara ese número con el más reciente;
+    si ya no es el más reciente (o sea, el usuario ya cambió de activo de
+    nuevo mientras tanto), esa respuesta vieja se descarta sin tocar el
+    gráfico. Así, sin importar el orden en que lleguen las respuestas de
+    la red, en pantalla siempre termina el activo que el usuario pidió al
+    final.
+  - **Memoria por activo y plazo** (`cryptoCandleCache`): la primera vez
+    que se abre un activo con un plazo (por ejemplo "Bitcoin, 1D") su
+    historial se guarda en memoria. Si el usuario vuelve a ese mismo
+    activo y plazo más tarde en la misma sesión, el gráfico aparece de
+    inmediato con lo guardado, mientras por detrás se pide una versión
+    actualizada que reemplaza el dibujo sin que el usuario tenga que
+    esperar viendo la pantalla en blanco.
+  - **Aviso de "Actualizando gráfico…"**: cuando de verdad hay que esperar
+    una petición nueva (primera vez que se abre ese activo/plazo), ahora
+    aparece un aviso claro con un ícono girando sobre el gráfico, en vez
+    de dejar la pantalla como si estuviera trabada.
+- **Verificación**: se probó de forma automatizada simulando una conexión
+  lenta (1.5 segundos de demora artificial) y haciendo clic muy rápido
+  entre varios activos seguidos, repetidas veces — el gráfico final
+  siempre correspondió al último activo elegido, sin mezclas de datos ni
+  errores en consola, y el aviso de carga apareció y desapareció en el
+  momento correcto.
+
+## 25. Segunda corrección, más profunda, sobre el mismo bug de cambio de activo (agosto 2026)
+
+- **Reporte del usuario**: después de subir la corrección de la sección 24,
+  el usuario mandó una captura de pantalla real del panel de trading
+  mostrando algo mucho más raro que una simple demora: el gráfico de
+  Bitcoin aparecía con velas de una escala de precio que no correspondía a
+  Bitcoin (entre 20.000 y 90.000, con una sola vela gigante), la barra de
+  Apertura/Máximo/Mínimo/Cierre debajo del gráfico mostraba números de otro
+  activo por completo (alrededor de 690-700, ni remotamente el precio real
+  de Bitcoin), y el precio "en vivo" a la derecha sí mostraba el número
+  correcto de Bitcoin. Tres partes de la misma pantalla mostrando tres
+  activos distintos a la vez — la corrección de la sección 24 (que resolvía
+  el problema de "una respuesta vieja de la red pisando a una más nueva")
+  no alcanzaba a explicar ni a arreglar esto.
+- **Causa real, encontrada revisando el código a fondo**: el precio en vivo
+  de todos los activos se sigue actualizando cada 5 segundos aunque el
+  usuario esté viendo otro — es lo que permite que la lista de la izquierda
+  siempre muestre precios frescos. El problema estaba en que, al cambiar de
+  activo, la variable que guarda "las velas que se están mostrando en este
+  momento" no se vaciaba de inmediato: seguía apuntando literalmente al
+  mismo historial guardado del activo anterior. Si esos 5 segundos del
+  precio en vivo caían justo mientras el historial del activo nuevo todavía
+  no había llegado (algo muy fácil que pase cambiando de activo rápido, o
+  simplemente por una CoinGecko algo lenta), el código tomaba el precio en
+  vivo del activo NUEVO y lo mezclaba directamente en la última vela
+  guardada del activo VIEJO — estirando su rango de precio hacia arriba o
+  hacia abajo con un número que no le pertenecía, y a veces corrompiendo
+  para siempre el historial guardado de ese activo viejo (no solo lo que se
+  veía en pantalla en ese momento). Repetir el cambio de activo varias
+  veces seguidas (como describió el usuario: "cuando intento cambiar de
+  opciones") iba empeorando la mezcla cada vez más, hasta terminar en algo
+  tan extraño como lo que se ve en la captura.
+- **Corrección aplicada** (`assets/js/trading-panel.js`, `trading-panel.html`,
+  `styles.css`):
+  - **Se limpia todo de inmediato al cambiar de activo o de plazo**, antes
+    de pedir el historial nuevo — no después. Se vacían las velas en
+    memoria, el dibujo del gráfico, el volumen, los indicadores (medias
+    móviles, bandas de Bollinger, RSI) y la barra de Apertura/Máximo/
+    Mínimo/Cierre (que ahora muestra "—" mientras tanto, en vez de dejar el
+    número del activo anterior). Como resultado, el "tick" de precio en
+    vivo ya no tiene ninguna vela vieja disponible a la cual pegarle el
+    precio del activo nuevo por error — literalmente no hay nada que
+    contaminar durante esa espera.
+  - **Reintento automático si falla la conexión**: antes, si el pedido del
+    historial fallaba (una CoinGecko caída, sin internet un instante, etc.)
+    el error se ignoraba en silencio y el gráfico se quedaba en el último
+    estado que tuviera, sin ningún aviso — justo el tipo de situación que
+    podía verse como "datos raros para siempre". Ahora se reintenta
+    automáticamente hasta 2 veces más (3 intentos en total) antes de darse
+    por vencido.
+  - **Aviso claro si de plano no se pudo cargar**: si los 3 intentos
+    fallan, aparece un mensaje explícito sobre el gráfico ("No se pudo
+    cargar el historial de este activo. Revisa tu conexión e intenta de
+    nuevo.") con un botón "Reintentar" — nunca se deja el gráfico en un
+    estado confuso o con datos de otro activo sin explicación. El precio en
+    vivo y la posibilidad de comprar/vender siguen funcionando igual de
+    bien mientras tanto, porque no dependen del historial del gráfico.
+- **Verificación**: se reprodujo el bug exacto de la captura de forma
+  automatizada (cambiando de activo mientras el historial todavía estaba
+  en camino, y encadenando varios cambios seguidos con precios en vivo
+  intercalados de por medio, igual que describió el usuario) confirmando
+  primero que SÍ se reproducía con el código de antes de esta corrección, y
+  luego que con la corrección aplicada el gráfico, la barra OHLC y el
+  precio en vivo siempre terminan mostrando el mismo activo y la misma
+  escala de precio, sin excepción. También se probó forzando fallas de red
+  repetidas para confirmar que el aviso de error y el botón de Reintentar
+  funcionan como se espera.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

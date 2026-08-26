@@ -1517,6 +1517,22 @@ a.brand:hover {
   border-top-color: var(--accent);
   animation: chart-loading-spin 0.7s linear infinite;
 }
+
+/* Aviso cuando de verdad falla la carga del histórico (tras reintentar) —
+   a diferencia del de "cargando", este sí permite hacer clic en Reintentar. */
+.chart-error-overlay {
+  flex-direction: column;
+  text-align: center;
+  padding: 24px;
+  pointer-events: auto;
+}
+.chart-error-overlay span {
+  max-width: 320px;
+  line-height: 1.4;
+}
+.chart-error-overlay .chart-tool-btn {
+  pointer-events: auto;
+}
 @keyframes chart-loading-spin {
   to { transform: rotate(360deg); }
 }

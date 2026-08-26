@@ -336,6 +336,14 @@ function selectAsset(assetId) {
   updatePanelChartTitle();
   updatePriceDisplay();
   updateToolbarForCategory();
+  // Importante: se limpia el gráfico ANTES de pedir el historial nuevo, no
+  // después. Si no se hace así, mientras se espera la respuesta (o si esa
+  // respuesta falla), el precio en vivo del activo recién elegido puede
+  // llegar por otro lado (el ticker de precios, que no depende del gráfico)
+  // y terminar mezclado con las velas viejas del activo anterior — eso era
+  // el "medio bug" reportado: números de un activo y velas de otro a la vez.
+  resetChartDisplay();
+  updateLivePriceLine();
   loadChartData(selectedAsset, selectedTimeframe);
 }
 
@@ -555,6 +563,7 @@ function renderToolbar() {
       if (btn.dataset.timeframe === selectedTimeframe) return;
       selectedTimeframe = btn.dataset.timeframe;
       tfContainer.querySelectorAll('button').forEach((b) => b.classList.toggle('is-active', b === btn));
+      resetChartDisplay();
       loadChartData(selectedAsset, selectedTimeframe);
     });
   });
@@ -856,6 +865,41 @@ function showChartLoading(visible) {
   if (overlay) overlay.classList.toggle('is-visible', visible);
 }
 
+function showChartError(visible) {
+  const overlay = document.getElementById('chart-error-overlay');
+  if (overlay) overlay.classList.toggle('is-visible', visible);
+}
+
+function clearOhlcBar() {
+  const openEl = document.getElementById('ohlc-open');
+  if (!openEl) return;
+  openEl.textContent = '—';
+  document.getElementById('ohlc-high').textContent = '—';
+  document.getElementById('ohlc-low').textContent = '—';
+  document.getElementById('ohlc-close').textContent = '—';
+  document.getElementById('ohlc-close').classList.remove('is-up', 'is-down');
+  document.getElementById('ohlc-volume').textContent = '—';
+}
+
+// Deja el gráfico completamente en blanco (velas, volumen, indicadores y la
+// barra OHLC) antes de pedir el historial de un activo o plazo nuevo. Es la
+// pieza clave para que nunca se vea, ni por un instante, una mezcla de datos
+// de dos activos distintos: mientras el gráfico está en blanco, el "ticker"
+// en vivo (que sigue funcionando todo el tiempo, cada 5 segundos) no tiene
+// ninguna vela vieja a la cual pegarle el precio nuevo por error.
+function resetChartDisplay() {
+  rawCandles = [];
+  showChartError(false);
+  if (priceSeries) priceSeries.setData([]);
+  if (volumeSeries) volumeSeries.setData([]);
+  if (smaFastSeries) smaFastSeries.setData([]);
+  if (smaSlowSeries) smaSlowSeries.setData([]);
+  if (bbUpperSeries) bbUpperSeries.setData([]);
+  if (bbLowerSeries) bbLowerSeries.setData([]);
+  if (rsiSeries) rsiSeries.setData([]);
+  clearOhlcBar();
+}
+
 function renderActiveCandles() {
   renderPriceSeries();
   renderVolumeSeries();
@@ -907,83 +951,115 @@ async function loadChartData(assetId, timeframeKey) {
   } else {
     showChartLoading(true);
   }
+  showChartError(false);
 
   const timeframe = TIMEFRAME_CONFIG[timeframeKey] || TIMEFRAME_CONFIG['1D'];
-  try {
-    const [ohlcRes, volRes] = await Promise.all([
-      fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=${timeframe.days}`),
-      fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=${timeframe.days}`),
-    ]);
-    if (!ohlcRes.ok) throw new Error('No se pudo obtener el histórico');
-    const rawOhlc = await ohlcRes.json();
-    const rawVolumes = volRes.ok ? ((await volRes.json()).total_volumes || []) : [];
 
-    const candles = rawOhlc
-      .map(([timestampMs, open, high, low, close]) => ({
-        time: Math.floor(timestampMs / 1000),
-        open,
-        high,
-        low,
-        close,
-      }))
-      .sort((a, b) => a.time - b.time);
-
-    // CoinGecko a veces repite el timestamp del último punto entre llamadas;
-    // el gráfico necesita tiempos estrictamente ascendentes.
-    const deduped = [];
-    candles.forEach((c) => {
-      if (deduped.length && deduped[deduped.length - 1].time === c.time) {
-        deduped[deduped.length - 1] = c;
-      } else {
-        deduped.push(c);
-      }
-    });
-
-    if (deduped.length < 2) return;
-
-    // Tamaño real de cada vela para este plazo (mediana de los espacios
-    // entre velas), usado para saber cuándo debe abrirse una vela nueva
-    // en vivo según el plazo elegido.
-    const gaps = [];
-    for (let i = 1; i < deduped.length; i++) gaps.push(deduped[i].time - deduped[i - 1].time);
-    gaps.sort((a, b) => a - b);
-    const freshBarDuration = gaps[Math.floor(gaps.length / 2)] || 1800;
-
-    // Empareja cada vela con su volumen real (dato independiente de CoinGecko),
-    // sumando los puntos de volumen que caen dentro del rango de tiempo de esa vela.
-    const volPoints = rawVolumes
-      .map(([ts, vol]) => ({ time: Math.floor(ts / 1000), volume: vol }))
-      .sort((a, b) => a.time - b.time);
-    let vIdx = 0;
-    deduped.forEach((c, i) => {
-      const bucketEnd = i + 1 < deduped.length ? deduped[i + 1].time : c.time + freshBarDuration;
-      let sum = 0;
-      let found = false;
-      while (vIdx < volPoints.length && volPoints[vIdx].time < bucketEnd) {
-        if (volPoints[vIdx].time >= c.time) { sum += volPoints[vIdx].volume; found = true; }
-        vIdx++;
-      }
-      c.volume = found ? sum : 0;
-    });
-
-    cryptoCandleCache[cacheKey] = { candles: deduped, barDurationSeconds: freshBarDuration };
-
-    // Si mientras esperábamos la respuesta el usuario ya cambió de activo,
-    // de plazo, o disparó otra carga más nueva, esta respuesta llegó tarde
-    // — se guarda igual en caché (para la próxima vez) pero no se dibuja.
+  // Hasta 3 intentos (el original + 2 reintentos) antes de rendirse: una
+  // sola falla de red (muy posible contra la API gratuita de CoinGecko) no
+  // debería dejar al usuario con el gráfico vacío para siempre ni obligarlo
+  // a adivinar que tiene que cambiar de activo y volver para reintentar.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // Si mientras tanto el usuario ya cambió de activo/plazo, esta carga ya
+    // no importa — se corta acá y la más nueva (con su propio token) sigue.
     if (myToken !== chartLoadToken) return;
-    if (assetId !== selectedAsset || timeframeKey !== selectedTimeframe) return;
 
-    rawCandles = deduped;
-    barDurationSeconds = freshBarDuration;
-    renderActiveCandles();
-  } catch (err) {
-    // Silencioso: el precio en vivo y las operaciones no dependen del gráfico.
-    // Si no había nada en caché para mostrar, al menos se quita el "cargando".
-  } finally {
-    if (myToken === chartLoadToken) showChartLoading(false);
+    try {
+      const [ohlcRes, volRes] = await Promise.all([
+        fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=${timeframe.days}`),
+        fetch(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=${timeframe.days}`),
+      ]);
+      if (!ohlcRes.ok) throw new Error('No se pudo obtener el histórico');
+      const rawOhlc = await ohlcRes.json();
+      const rawVolumes = volRes.ok ? ((await volRes.json()).total_volumes || []) : [];
+
+      const candles = rawOhlc
+        .map(([timestampMs, open, high, low, close]) => ({
+          time: Math.floor(timestampMs / 1000),
+          open,
+          high,
+          low,
+          close,
+        }))
+        .sort((a, b) => a.time - b.time);
+
+      // CoinGecko a veces repite el timestamp del último punto entre llamadas;
+      // el gráfico necesita tiempos estrictamente ascendentes.
+      const deduped = [];
+      candles.forEach((c) => {
+        if (deduped.length && deduped[deduped.length - 1].time === c.time) {
+          deduped[deduped.length - 1] = c;
+        } else {
+          deduped.push(c);
+        }
+      });
+
+      if (deduped.length < 2) throw new Error('Historial insuficiente');
+
+      // Tamaño real de cada vela para este plazo (mediana de los espacios
+      // entre velas), usado para saber cuándo debe abrirse una vela nueva
+      // en vivo según el plazo elegido.
+      const gaps = [];
+      for (let i = 1; i < deduped.length; i++) gaps.push(deduped[i].time - deduped[i - 1].time);
+      gaps.sort((a, b) => a - b);
+      const freshBarDuration = gaps[Math.floor(gaps.length / 2)] || 1800;
+
+      // Empareja cada vela con su volumen real (dato independiente de CoinGecko),
+      // sumando los puntos de volumen que caen dentro del rango de tiempo de esa vela.
+      const volPoints = rawVolumes
+        .map(([ts, vol]) => ({ time: Math.floor(ts / 1000), volume: vol }))
+        .sort((a, b) => a.time - b.time);
+      let vIdx = 0;
+      deduped.forEach((c, i) => {
+        const bucketEnd = i + 1 < deduped.length ? deduped[i + 1].time : c.time + freshBarDuration;
+        let sum = 0;
+        let found = false;
+        while (vIdx < volPoints.length && volPoints[vIdx].time < bucketEnd) {
+          if (volPoints[vIdx].time >= c.time) { sum += volPoints[vIdx].volume; found = true; }
+          vIdx++;
+        }
+        c.volume = found ? sum : 0;
+      });
+
+      cryptoCandleCache[cacheKey] = { candles: deduped, barDurationSeconds: freshBarDuration };
+
+      // Si mientras esperábamos la respuesta el usuario ya cambió de activo,
+      // de plazo, o disparó otra carga más nueva, esta respuesta llegó tarde
+      // — se guarda igual en caché (para la próxima vez) pero no se dibuja.
+      if (myToken !== chartLoadToken) return;
+      if (assetId !== selectedAsset || timeframeKey !== selectedTimeframe) return;
+
+      rawCandles = deduped;
+      barDurationSeconds = freshBarDuration;
+      renderActiveCandles();
+      showChartLoading(false);
+      return; // éxito — no hace falta reintentar
+    } catch (err) {
+      if (myToken !== chartLoadToken) return; // el usuario ya se fue a otro activo, no vale la pena seguir
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        continue;
+      }
+      // Se agotaron los intentos: se avisa con un mensaje claro y un botón
+      // de Reintentar en vez de dejar el gráfico en blanco sin explicación
+      // (el precio en vivo y las operaciones siguen funcionando igual,
+      // porque no dependen del histórico del gráfico).
+      showChartLoading(false);
+      if (!cached) showChartError(true);
+    }
   }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const retryBtn = document.getElementById('chart-error-retry');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      showChartError(false);
+      loadChartData(selectedAsset, selectedTimeframe);
+    });
+  }
+});
 
 // ---------------------------------------------------------------------
 // Precio en vivo: criptomonedas por CoinGecko (simple/price, un solo
