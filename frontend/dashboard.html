@@ -247,7 +247,7 @@
           <tr>
             <th>Fecha</th>
             <th>Monto</th>
-            <th>Banco</th>
+            <th>Banco / método</th>
             <th>Contacto</th>
             <th>Estado</th>
           </tr>
@@ -610,21 +610,21 @@
 
       <div class="field">
         <label>Método de depósito</label>
-        <div class="method-grid">
-          <button type="button" class="method-card is-active" data-value="Transferencia bancaria" disabled>
+        <div class="method-grid" id="deposit-method-grid">
+          <button type="button" class="method-card is-active" data-value="Transferencia bancaria">
             <span class="method-card-icon">🏦</span>
             <span class="method-card-name">Transferencia bancaria</span>
             <span class="method-card-time">~1-2 min</span>
           </button>
-          <button type="button" class="method-card" disabled title="Próximamente">
+          <button type="button" class="method-card" data-value="Binance">
             <span class="method-card-icon">🟡</span>
             <span class="method-card-name">Binance</span>
-            <span class="method-card-soon">Próximamente</span>
+            <span class="method-card-time">~1-2 min</span>
           </button>
-          <button type="button" class="method-card" disabled title="Próximamente">
+          <button type="button" class="method-card" data-value="Coinbase">
             <span class="method-card-icon">🔵</span>
             <span class="method-card-name">Coinbase</span>
-            <span class="method-card-soon">Próximamente</span>
+            <span class="method-card-time">~1-2 min</span>
           </button>
           <button type="button" class="method-card" disabled title="Próximamente">
             <span class="method-card-icon">💳</span>
@@ -632,6 +632,7 @@
             <span class="method-card-soon">Próximamente</span>
           </button>
         </div>
+        <input type="hidden" id="deposit-method" value="Transferencia bancaria" />
       </div>
 
       <div class="field">
@@ -640,7 +641,7 @@
         <span class="field-hint" id="deposit-amount-hint">Ingresa un monto real y válido.</span>
       </div>
 
-      <div class="field">
+      <div class="field" id="deposit-bank-field">
         <label for="deposit-bank">Banco</label>
         <select id="deposit-bank" required>
           <option value="" disabled selected>Selecciona tu banco</option>
@@ -669,6 +670,10 @@
           </optgroup>
         </select>
       </div>
+
+      <p class="helper-text" id="deposit-crypto-hint" style="display:none; margin-top:-8px;">
+        Te contactaremos al número que dejes abajo para indicarte a qué billetera enviar tu depósito.
+      </p>
 
       <div class="field">
         <label for="deposit-contact">Número de celular</label>

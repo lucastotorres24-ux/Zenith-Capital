@@ -665,7 +665,31 @@ function wireDepositModal() {
     if (event.target === overlay) closeDepositModal();
   });
 
+  // Tarjetas de método de depósito: igual que en Retirar, clic selecciona
+  // una y guarda el valor en el input oculto que lee el submit. El campo
+  // "Banco" solo tiene sentido si el método es transferencia bancaria — con
+  // Binance/Coinbase no hay banco que elegir, así que se oculta y en su
+  // lugar se avisa que se contacta al usuario por el celular que deje.
+  document.getElementById('deposit-method-grid').querySelectorAll('.method-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      document.getElementById('deposit-method-grid').querySelectorAll('.method-card').forEach((c) => {
+        c.classList.remove('is-active');
+      });
+      card.classList.add('is-active');
+      const method = card.dataset.value;
+      document.getElementById('deposit-method').value = method;
+      updateDepositBankFieldVisibility(method);
+    });
+  });
+
   form.addEventListener('submit', handleDepositSubmit);
+}
+
+function updateDepositBankFieldVisibility(method) {
+  const isBankTransfer = method === 'Transferencia bancaria';
+  document.getElementById('deposit-bank-field').style.display = isBankTransfer ? 'block' : 'none';
+  document.getElementById('deposit-bank').required = isBankTransfer;
+  document.getElementById('deposit-crypto-hint').style.display = isBankTransfer ? 'none' : 'block';
 }
 
 function openDepositModal() {
@@ -673,6 +697,11 @@ function openDepositModal() {
   document.getElementById('deposit-form').style.display = 'block';
   document.getElementById('deposit-receipt').style.display = 'none';
   hideDepositModalError();
+  document.getElementById('deposit-method').value = 'Transferencia bancaria';
+  document.getElementById('deposit-method-grid').querySelectorAll('.method-card').forEach((c) => {
+    c.classList.toggle('is-active', c.dataset.value === 'Transferencia bancaria');
+  });
+  updateDepositBankFieldVisibility('Transferencia bancaria');
   document.getElementById('deposit-modal').classList.add('is-visible');
   document.getElementById('deposit-amount').focus();
 }
@@ -704,9 +733,19 @@ async function handleDepositSubmit(event) {
   // convertimos con la tasa de cambio en vivo antes de enviarlo.
   const amountUsd = typeof Currency !== 'undefined' ? Currency.toUsd(rawAmount) : Number(rawAmount);
 
+  // El backend solo tiene un campo "bank" (de cuando el único método era
+  // transferencia bancaria) — con Binance/Coinbase no hay un banco que
+  // elegir, así que se manda el nombre del método en su lugar. Se sigue
+  // viendo bien en todos lados donde ya se muestra ese campo (historial,
+  // panel de administrador, comprobante) sin tocar nada del backend.
+  const method = document.getElementById('deposit-method').value || 'Transferencia bancaria';
+  const bank = method === 'Transferencia bancaria'
+    ? document.getElementById('deposit-bank').value.trim()
+    : method;
+
   const payload = {
     amount: amountUsd,
-    bank: document.getElementById('deposit-bank').value.trim(),
+    bank,
     contact: document.getElementById('deposit-contact').value.trim(),
   };
 

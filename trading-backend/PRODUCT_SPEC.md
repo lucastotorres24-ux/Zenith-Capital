@@ -1518,6 +1518,32 @@ cambio** (no solo el símbolo).
   real) — son mejoras de confiabilidad de conexión y de organización
   visual únicamente.
 
+## 28. Binance y Coinbase como método de depósito (agosto 2026)
+
+- Antes, el modal de "Solicitar depósito" solo dejaba elegir
+  "Transferencia bancaria" — Binance, Coinbase y Tarjeta aparecían como
+  "Próximamente" y no se podían seleccionar, aunque para **retirar** esos
+  mismos métodos (menos Tarjeta) ya funcionaban desde antes. Lucas
+  preguntó por qué no se podía hacer clic ahí; a pedido suyo se activaron
+  Binance y Coinbase también para depositar, igual que ya funcionaban para
+  retirar.
+- Tarjeta se queda deshabilitada ("Próximamente") — Lucas decidió
+  dejarla así, y de todas formas sigue aplicando la restricción de
+  seguridad no negociable de más abajo: no se pide número de tarjeta real
+  en un sitio de práctica sin un procesador de pago real detrás.
+- Cuando el método elegido es Binance o Coinbase, el campo "Banco" (una
+  lista de bancos reales) ya no tiene sentido, así que se oculta — el
+  formulario pasa a mostrar solo el monto y el número de celular, igual
+  que ya pasa en el modal de Retirar, y se avisa que el equipo de Zenith
+  Capital contacta a esa persona para indicarle a qué billetera enviar el
+  dinero. El backend no cambió: sigue guardando un solo campo de texto
+  (antes pensado para el nombre del banco), que ahora recibe "Binance" o
+  "Coinbase" cuando corresponde — se ve bien en el historial de depósitos,
+  el panel de administrador y el comprobante sin tocar la base de datos ni
+  las rutas del servidor. La columna correspondiente en el historial de
+  depósitos del dashboard se renombró de "Banco" a "Banco / método" para
+  reflejar esto.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,
