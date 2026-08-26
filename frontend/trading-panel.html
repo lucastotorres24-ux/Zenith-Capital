@@ -61,11 +61,31 @@
 
 <main class="panel-body">
 
+  <!-- Lista de instrumentos: buscador + categorías + precios en vivo,
+       como el panel "Instrumentos" de una plataforma de trading real. -->
+  <aside class="instrument-panel">
+    <div class="instrument-panel-header">
+      <input type="text" id="instrument-search" placeholder="Buscar activo…" autocomplete="off" />
+    </div>
+    <div class="instrument-category-tabs">
+      <button type="button" class="instrument-category-tab is-active" data-category="all">Todos</button>
+      <button type="button" class="instrument-category-tab" data-category="crypto">Cripto</button>
+      <button type="button" class="instrument-category-tab" data-category="metal">Metales</button>
+    </div>
+    <div class="instrument-list" id="instrument-list">
+      <!-- se llena por JS -->
+    </div>
+  </aside>
+
   <!-- Gráfico -->
   <section class="panel-chart-card" id="panel-chart-card">
     <div class="panel-chart-header">
-      <div class="asset-tabs" id="asset-tabs">
-        <!-- se llena por JS -->
+      <div class="panel-chart-title">
+        <span class="panel-chart-title-icon is-crypto" id="panel-chart-icon">B</span>
+        <div>
+          <div class="panel-chart-title-name" id="panel-chart-name">Bitcoin</div>
+          <div class="panel-chart-title-symbol" id="panel-chart-symbol">BTC</div>
+        </div>
       </div>
       <div class="panel-price-display">
         <div class="panel-price-value" id="panel-price-value">—</div>
@@ -100,7 +120,7 @@
       <div id="panel-rsi-chart" style="position:absolute; inset:0;"></div>
     </div>
 
-    <p class="panel-chart-note">
+    <p class="panel-chart-note" id="panel-chart-note">
       Velas con datos históricos reales de CoinGecko (puede tener algunos minutos u horas de rezago
       respecto al segundo exacto). La vela más reciente se actualiza en vivo con cada precio nuevo — no
       es una simulación aleatoria, se mueve con el precio real del mercado. El precio de entrada/salida
@@ -117,6 +137,11 @@
       <div id="panel-no-accounts" class="form-error" style="margin-bottom:16px;">
         <span>⚠</span>
         <span>Todavía no tienes ninguna cuenta. <a href="dashboard.html" style="color:inherit; text-decoration:underline;">Crea una en el dashboard</a> para poder operar aquí.</span>
+      </div>
+
+      <div id="panel-no-funds" class="form-error" style="margin-bottom:16px;">
+        <span>⚠</span>
+        <span>No tienes saldo disponible en esta cuenta todavía. Cuando el equipo de Zenith Capital confirme tu depósito, tu saldo aparecerá aquí y podrás comprar y vender con él.</span>
       </div>
 
       <div id="panel-account-fields">

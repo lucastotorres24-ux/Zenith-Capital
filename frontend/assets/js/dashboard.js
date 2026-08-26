@@ -506,6 +506,11 @@ function openCreateModal() {
   document.getElementById('modal-title').textContent = 'Nueva cuenta';
   document.getElementById('account-id').value = '';
   document.getElementById('account-form').reset();
+  // El balance y equity de una cuenta nueva siempre empiezan en 0 — solo
+  // Zenith Capital puede asignar saldo, desde el panel de administrador,
+  // después de confirmar un depósito. Estos campos son de solo lectura.
+  document.getElementById('account-balance').value = '';
+  document.getElementById('account-equity').value = '';
   hideModalError();
   document.getElementById('account-modal').classList.add('is-visible');
   document.getElementById('account-number').focus();
@@ -521,8 +526,10 @@ function openEditModal(id) {
   document.getElementById('account-number').disabled = true; // no se puede cambiar el número
   document.getElementById('account-type').value = account.accountType;
   document.getElementById('account-currency').value = account.currency;
-  document.getElementById('account-balance').value = account.balance;
-  document.getElementById('account-equity').value = account.equity;
+  // Balance y equity se muestran de solo lectura (no editables) — el valor
+  // real, actualizado, lo asigna Zenith Capital desde el panel de admin.
+  document.getElementById('account-balance').value = money(account.balance, account.currency);
+  document.getElementById('account-equity').value = money(account.equity, account.currency);
   document.getElementById('account-leverage').value = account.leverage;
 
   hideModalError();
@@ -547,12 +554,13 @@ async function handleAccountSubmit(event) {
   hideModalError();
 
   const id = document.getElementById('account-id').value;
+  // No se envía balance ni equity: son de solo lectura en este formulario.
+  // El servidor además los ignora si llegaran a mandarse (ver routes/accounts.js) —
+  // solo el panel de administrador puede asignar o cambiar el saldo real.
   const payload = {
     accountNumber: document.getElementById('account-number').value.trim(),
     accountType: document.getElementById('account-type').value,
     currency: document.getElementById('account-currency').value,
-    balance: Number(document.getElementById('account-balance').value),
-    equity: Number(document.getElementById('account-equity').value),
     leverage: document.getElementById('account-leverage').value,
   };
 

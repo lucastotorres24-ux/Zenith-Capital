@@ -4,14 +4,11 @@
 // de la plataforma.
 
 // Mismo criterio que el ticker del dashboard, pero sin monedas estables
-// (tether) — en una apuesta Sube/Baja un activo que casi no se mueve solo
-// produce empates. Incluye oro tokenizado (PAX Gold) como opción no-cripto.
-const PANEL_ASSETS = [
-  'bitcoin', 'ethereum', 'binancecoin', 'solana', 'ripple',
-  'cardano', 'dogecoin', 'polkadot', 'chainlink', 'avalanche-2',
-  'litecoin', 'tron', 'bitcoin-cash', 'pax-gold',
-];
-const PANEL_META = {
+// (tether/usd-coin) — en una apuesta Sube/Baja un activo que casi no se
+// mueve solo produce empates. Lista amplia (igual que una plataforma real
+// con muchas opciones para estudiar) pero sin nada de relleno: todas son
+// criptomonedas reales y conocidas, con precio real de CoinGecko.
+const CRYPTO_META = {
   bitcoin: { symbol: 'BTC', name: 'Bitcoin' },
   ethereum: { symbol: 'ETH', name: 'Ethereum' },
   binancecoin: { symbol: 'BNB', name: 'BNB' },
@@ -25,8 +22,50 @@ const PANEL_META = {
   litecoin: { symbol: 'LTC', name: 'Litecoin' },
   tron: { symbol: 'TRX', name: 'TRON' },
   'bitcoin-cash': { symbol: 'BCH', name: 'Bitcoin Cash' },
-  'pax-gold': { symbol: 'PAXG', name: 'Oro (PAX Gold)' },
+  'polygon-ecosystem-token': { symbol: 'POL', name: 'Polygon' },
+  toncoin: { symbol: 'TON', name: 'Toncoin' },
+  'shiba-inu': { symbol: 'SHIB', name: 'Shiba Inu' },
+  uniswap: { symbol: 'UNI', name: 'Uniswap' },
+  stellar: { symbol: 'XLM', name: 'Stellar' },
+  cosmos: { symbol: 'ATOM', name: 'Cosmos' },
+  near: { symbol: 'NEAR', name: 'NEAR Protocol' },
+  'internet-computer': { symbol: 'ICP', name: 'Internet Computer' },
+  filecoin: { symbol: 'FIL', name: 'Filecoin' },
+  'hedera-hashgraph': { symbol: 'HBAR', name: 'Hedera' },
+  vechain: { symbol: 'VET', name: 'VeChain' },
+  algorand: { symbol: 'ALGO', name: 'Algorand' },
+  aptos: { symbol: 'APT', name: 'Aptos' },
+  sui: { symbol: 'SUI', name: 'Sui' },
+  arbitrum: { symbol: 'ARB', name: 'Arbitrum' },
+  optimism: { symbol: 'OP', name: 'Optimism' },
+  'injective-protocol': { symbol: 'INJ', name: 'Injective' },
+  'the-graph': { symbol: 'GRT', name: 'The Graph' },
+  aave: { symbol: 'AAVE', name: 'Aave' },
+  'render-token': { symbol: 'RENDER', name: 'Render' },
+  pepe: { symbol: 'PEPE', name: 'Pepe' },
+  bonk: { symbol: 'BONK', name: 'Bonk' },
+  'the-sandbox': { symbol: 'SAND', name: 'The Sandbox' },
+  decentraland: { symbol: 'MANA', name: 'Decentraland' },
 };
+
+// Metales reales (oro, plata, platino, paladio, cobre) vía gold-api.com —
+// una API gratuita, sin llave, con precio real y en vivo (no de
+// criptomonedas). Esta API no ofrece historial gratuito, así que el
+// gráfico de velas de un metal se construye 100% en vivo, en tiempo real,
+// a partir del momento en que se abre (ver loadMetalChartData más abajo) —
+// nunca se inventa historial que no exista.
+const METAL_META = {
+  'metal-xau': { symbol: 'XAU', name: 'Oro', metalSymbol: 'XAU' },
+  'metal-xag': { symbol: 'XAG', name: 'Plata', metalSymbol: 'XAG' },
+  'metal-xpt': { symbol: 'XPT', name: 'Platino', metalSymbol: 'XPT' },
+  'metal-xpd': { symbol: 'XPD', name: 'Paladio', metalSymbol: 'XPD' },
+  'metal-cu': { symbol: 'XCU', name: 'Cobre', metalSymbol: 'HG' },
+};
+
+const PANEL_META = {};
+Object.keys(CRYPTO_META).forEach((id) => { PANEL_META[id] = { ...CRYPTO_META[id], category: 'crypto' }; });
+Object.keys(METAL_META).forEach((id) => { PANEL_META[id] = { ...METAL_META[id], category: 'metal' }; });
+const PANEL_ASSETS = [...Object.keys(CRYPTO_META), ...Object.keys(METAL_META)];
 
 const PRICE_POLL_MS = 5_000;
 const CHART_REFRESH_MS = 60_000;
@@ -77,6 +116,15 @@ let rsiSeries = null;
 let rawCandles = []; // últimas velas cargadas para el activo/plazo actual (con volumen ya emparejado)
 let barDurationSeconds = 1800; // se recalcula con cada carga según el tamaño real de vela recibido
 
+// Para metales: como no hay historial gratuito, las velas se acumulan en
+// vivo aquí (por activo) mientras la pestaña esté abierta, para que si
+// cambias a otro activo y vuelves, no se pierda lo ya construido.
+let metalCandleCache = {};
+const METAL_BAR_SECONDS = 30;
+
+let instrumentCategory = 'all'; // 'all' | 'crypto' | 'metal'
+let instrumentSearch = '';
+
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
     window.location.href = 'index.html';
@@ -85,13 +133,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderUserChip();
   wireLogout();
-  renderAssetTabs();
+  renderInstrumentList();
+  wireInstrumentControls();
+  updatePanelChartTitle();
   wireDurationPills();
   wireDirectionButtons();
   document.getElementById('panel-amount').addEventListener('input', updatePayoutPreview);
+  document.getElementById('panel-account').addEventListener('change', updateAccountAvailability);
 
   initChart();
   renderToolbar();
+  updateToolbarForCategory();
   wireFullscreen();
 
   loadAccounts();
@@ -180,66 +232,141 @@ async function loadAccounts() {
 // Si el usuario todavía no tiene ninguna cuenta creada, el selector de
 // cuenta queda vacío y no hay nada que elegir — en vez de dejar el
 // desplegable "muerto" sin explicación, se oculta y se muestra un aviso
-// claro con un enlace para crear la primera cuenta, y se deshabilita el
-// resto del panel de operación para que no se pueda intentar operar sin
-// una cuenta.
+// claro con un enlace para crear la primera cuenta.
+//
+// Si ya tiene cuenta pero esa cuenta todavía está en $0 (normal para una
+// cuenta recién creada — el saldo lo asigna Zenith Capital después de
+// confirmar un depósito, nunca el usuario), se muestra un aviso distinto
+// de "no tienes saldo" en vez del de "crea una cuenta", porque el problema
+// real no es la cuenta (ya existe) sino que todavía no tiene fondos. En
+// ambos casos se deshabilita el resto del panel para no dejar intentar
+// operar sin poder.
 function updateAccountAvailability() {
   const hasAccounts = accountsCache.length > 0;
+  const select = document.getElementById('panel-account');
+  const selected = accountsCache.find((a) => String(a.id) === select.value) || accountsCache[0];
+  const hasFunds = hasAccounts && Number(selected?.balance) > 0;
 
   document.getElementById('panel-no-accounts').classList.toggle('is-visible', !hasAccounts);
+  document.getElementById('panel-no-funds').classList.toggle('is-visible', hasAccounts && !hasFunds);
   document.getElementById('panel-account-fields').style.display = hasAccounts ? 'block' : 'none';
 
-  document.getElementById('panel-amount').disabled = !hasAccounts;
-  document.querySelectorAll('.duration-pill').forEach((btn) => { btn.disabled = !hasAccounts; });
-  document.getElementById('btn-higher').disabled = !hasAccounts;
-  document.getElementById('btn-lower').disabled = !hasAccounts;
+  const canOperate = hasAccounts && hasFunds;
+  document.getElementById('panel-amount').disabled = !canOperate;
+  document.querySelectorAll('.duration-pill').forEach((btn) => { btn.disabled = !canOperate; });
+  document.getElementById('btn-higher').disabled = !canOperate;
+  document.getElementById('btn-lower').disabled = !canOperate;
 }
 
 // ---------------------------------------------------------------------
-// Selector de activo
+// Selector de activo: lista de instrumentos (buscador + categorías),
+// como el panel "Instrumentos" de una plataforma de trading real —
+// reemplaza las pestañas simples de antes ahora que hay muchos más
+// activos (criptomonedas + metales) para que quepan cómodamente.
 // ---------------------------------------------------------------------
 
-function renderAssetTabs() {
-  const container = document.getElementById('asset-tabs');
-  container.innerHTML = PANEL_ASSETS.map((id) => {
-    const meta = PANEL_META[id];
-    return `
-      <button type="button" class="asset-tab ${id === selectedAsset ? 'is-active' : ''}" data-asset="${id}">
-        <span>${meta.symbol}</span>
-        <span class="asset-tab-change is-flat" data-change-for="${id}">·</span>
-      </button>
-    `;
-  }).join('');
+function wireInstrumentControls() {
+  document.getElementById('instrument-search').addEventListener('input', (e) => {
+    instrumentSearch = e.target.value;
+    renderInstrumentList();
+  });
 
-  container.querySelectorAll('.asset-tab').forEach((btn) => {
+  document.querySelectorAll('.instrument-category-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      selectedAsset = btn.dataset.asset;
-      container.querySelectorAll('.asset-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
-      updatePriceDisplay();
-      loadChartData(selectedAsset, selectedTimeframe);
+      instrumentCategory = btn.dataset.category;
+      document.querySelectorAll('.instrument-category-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+      renderInstrumentList();
     });
   });
 }
 
-// Actualiza el pequeño porcentaje de cambio (24h) bajo cada pestaña de
-// activo, para poder comparar de un vistazo cuál se está moviendo más sin
-// tener que entrar uno por uno — igual que un watchlist real.
-function updateAssetTabBadges() {
+function renderInstrumentList() {
+  const container = document.getElementById('instrument-list');
+  const term = instrumentSearch.trim().toLowerCase();
+
+  const filtered = PANEL_ASSETS.filter((id) => {
+    const meta = PANEL_META[id];
+    if (instrumentCategory !== 'all' && meta.category !== instrumentCategory) return false;
+    if (!term) return true;
+    return meta.symbol.toLowerCase().includes(term) || meta.name.toLowerCase().includes(term);
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = '<div class="instrument-list-empty">Ningún activo coincide con tu búsqueda.</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map((id) => {
+    const meta = PANEL_META[id];
+    return `
+      <button type="button" class="instrument-row ${id === selectedAsset ? 'is-active' : ''}" data-asset="${id}">
+        <span class="instrument-row-icon is-${meta.category}">${meta.symbol.charAt(0)}</span>
+        <span class="instrument-row-name">
+          <strong>${meta.symbol}</strong>
+          <small>${escapeHtml(meta.name)}</small>
+        </span>
+        <span class="instrument-row-price">
+          <strong id="instrument-price-${id}">—</strong>
+          <span class="instrument-row-change is-flat" id="instrument-change-${id}">·</span>
+        </span>
+      </button>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.instrument-row').forEach((btn) => {
+    btn.addEventListener('click', () => selectAsset(btn.dataset.asset));
+  });
+
+  updateInstrumentPrices();
+}
+
+function selectAsset(assetId) {
+  if (assetId === selectedAsset || !PANEL_META[assetId]) return;
+  selectedAsset = assetId;
+
+  document.querySelectorAll('.instrument-row').forEach((b) => b.classList.toggle('is-active', b.dataset.asset === assetId));
+  updatePanelChartTitle();
+  updatePriceDisplay();
+  updateToolbarForCategory();
+  loadChartData(selectedAsset, selectedTimeframe);
+}
+
+function updatePanelChartTitle() {
+  const meta = PANEL_META[selectedAsset];
+  const iconEl = document.getElementById('panel-chart-icon');
+  iconEl.textContent = meta.symbol.charAt(0);
+  iconEl.className = `panel-chart-title-icon is-${meta.category}`;
+  document.getElementById('panel-chart-name').textContent = meta.name;
+  document.getElementById('panel-chart-symbol').textContent = meta.symbol;
+}
+
+// Actualiza el precio y el porcentaje de cambio (24h) de cada fila de la
+// lista de instrumentos, para poder comparar de un vistazo cuál se está
+// moviendo más sin tener que entrar uno por uno — igual que un watchlist
+// real. Los metales no traen variación 24h (gold-api.com solo da el
+// precio actual), así que ahí se muestra "—" en vez de inventar un número.
+function updateInstrumentPrices() {
   PANEL_ASSETS.forEach((id) => {
-    const el = document.querySelector(`[data-change-for="${id}"]`);
-    if (!el) return;
+    const price = currentPrices[id];
+    const priceEl = document.getElementById(`instrument-price-${id}`);
+    if (priceEl) priceEl.textContent = typeof price === 'number' ? money(price) : '—';
+
     const change = dayChangePercents[id];
-    if (typeof change !== 'number') return;
-    el.classList.remove('is-up', 'is-down', 'is-flat');
-    if (change > 0.01) {
-      el.classList.add('is-up');
-      el.textContent = `+${change.toFixed(1)}%`;
+    const changeEl = document.getElementById(`instrument-change-${id}`);
+    if (!changeEl) return;
+    changeEl.classList.remove('is-up', 'is-down', 'is-flat');
+    if (typeof change !== 'number') {
+      changeEl.classList.add('is-flat');
+      changeEl.textContent = '—';
+    } else if (change > 0.01) {
+      changeEl.classList.add('is-up');
+      changeEl.textContent = `+${change.toFixed(1)}%`;
     } else if (change < -0.01) {
-      el.classList.add('is-down');
-      el.textContent = `${change.toFixed(1)}%`;
+      changeEl.classList.add('is-down');
+      changeEl.textContent = `${change.toFixed(1)}%`;
     } else {
-      el.classList.add('is-flat');
-      el.textContent = '0.0%';
+      changeEl.classList.add('is-flat');
+      changeEl.textContent = '0.0%';
     }
   });
 }
@@ -447,6 +574,34 @@ function renderToolbar() {
   });
 }
 
+// Los metales (gold-api.com) no tienen historial gratuito ni volumen real,
+// así que al elegir uno se deshabilitan los plazos (no hay nada distinto
+// que traer) y el indicador de Volumen (no hay dato real que mostrar), y
+// la nota bajo el gráfico explica por qué. Nada de esto se inventa: se
+// deja claro qué es real y qué todavía no está disponible.
+function updateToolbarForCategory() {
+  const isMetal = PANEL_META[selectedAsset]?.category === 'metal';
+
+  document.querySelectorAll('#timeframe-tabs button').forEach((b) => { b.disabled = isMetal; });
+
+  const volBtn = document.querySelector('#indicator-toggles button[data-indicator="volume"]');
+  if (volBtn) {
+    volBtn.disabled = isMetal;
+    if (isMetal && indicatorsOn.volume) {
+      indicatorsOn.volume = false;
+      volBtn.classList.remove('is-active');
+      if (volumeSeries) volumeSeries.applyOptions({ visible: false });
+    }
+  }
+
+  const note = document.getElementById('panel-chart-note');
+  if (note) {
+    note.textContent = isMetal
+      ? 'Precio real y en vivo (gold-api.com) — este activo no tiene historial de velas gratuito disponible, así que el gráfico se construye en tiempo real desde el momento en que lo abres, y sigue acumulando mientras tengas la página abierta. El volumen no está disponible para metales. El precio de entrada/salida de cada operación sí es 100% real, igual que en criptomonedas.'
+      : 'Velas con datos históricos reales de CoinGecko (puede tener algunos minutos u horas de rezago respecto al segundo exacto). La vela más reciente se actualiza en vivo con cada precio nuevo — no es una simulación aleatoria, se mueve con el precio real del mercado. El precio de entrada/salida de cada operación se toma del precio en vivo mostrado arriba a la derecha.';
+  }
+}
+
 // ---------------------------------------------------------------------
 // Indicadores técnicos (calculados en el navegador a partir de las velas
 // reales ya cargadas — sin librerías externas de indicadores)
@@ -624,20 +779,51 @@ function wireFullscreen() {
 // plataforma real.
 // ---------------------------------------------------------------------
 
-function updateLiveCandle(assetId, price) {
-  if (assetId !== selectedAsset || typeof price !== 'number' || !rawCandles.length || !priceSeries) return;
-
-  const last = rawCandles[rawCandles.length - 1];
+// Acumula una vela en vivo para un metal en su caché propia (independiente
+// de cuál esté seleccionado en pantalla), para que el historial construido
+// en vivo no se pierda al cambiar de activo y volver.
+function accumulateMetalCandle(assetId, price) {
+  if (typeof price !== 'number') return;
+  if (!metalCandleCache[assetId]) metalCandleCache[assetId] = { candles: [], barDurationSeconds: METAL_BAR_SECONDS };
+  const entry = metalCandleCache[assetId];
   const nowSec = Math.floor(Date.now() / 1000);
+  const last = entry.candles[entry.candles.length - 1];
 
-  if (nowSec - last.time >= barDurationSeconds) {
-    rawCandles.push({ time: last.time + barDurationSeconds, open: price, high: price, low: price, close: price, volume: 0 });
+  if (!last) {
+    entry.candles.push({ time: nowSec, open: price, high: price, low: price, close: price, volume: 0 });
+  } else if (nowSec - last.time >= entry.barDurationSeconds) {
+    entry.candles.push({ time: last.time + entry.barDurationSeconds, open: price, high: price, low: price, close: price, volume: 0 });
+    if (entry.candles.length > 300) entry.candles.shift();
   } else {
     last.high = Math.max(last.high, price);
     last.low = Math.min(last.low, price);
     last.close = price;
   }
+}
 
+function updateLiveCandle(assetId, price) {
+  if (typeof price !== 'number') return;
+  const meta = PANEL_META[assetId];
+
+  if (meta && meta.category === 'metal') {
+    accumulateMetalCandle(assetId, price);
+    if (assetId !== selectedAsset) return; // sigue acumulando en segundo plano, pero no hay nada que dibujar
+    rawCandles = metalCandleCache[assetId].candles;
+    barDurationSeconds = metalCandleCache[assetId].barDurationSeconds;
+  } else {
+    if (assetId !== selectedAsset || !rawCandles.length) return;
+    const last = rawCandles[rawCandles.length - 1];
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (nowSec - last.time >= barDurationSeconds) {
+      rawCandles.push({ time: last.time + barDurationSeconds, open: price, high: price, low: price, close: price, volume: 0 });
+    } else {
+      last.high = Math.max(last.high, price);
+      last.low = Math.min(last.low, price);
+      last.close = price;
+    }
+  }
+
+  if (!priceSeries || !rawCandles.length) return;
   const current = rawCandles[rawCandles.length - 1];
   if (selectedChartType === 'candles') {
     priceSeries.update({ time: current.time, open: current.open, high: current.high, low: current.low, close: current.close });
@@ -657,8 +843,32 @@ function updateLiveCandle(assetId, price) {
   if (!isHoveringChart) showLastCandleOhlc();
 }
 
+// Los metales no tienen historial gratuito (ver nota arriba de METAL_META):
+// no hay nada que "cargar" — solo se muestra lo que ya se haya acumulado
+// en vivo para ese activo (posiblemente nada todavía, si se acaba de
+// seleccionar por primera vez en esta sesión).
+function loadMetalChartData(assetId) {
+  if (!priceSeries) return;
+  if (!metalCandleCache[assetId]) metalCandleCache[assetId] = { candles: [], barDurationSeconds: METAL_BAR_SECONDS };
+
+  rawCandles = metalCandleCache[assetId].candles;
+  barDurationSeconds = metalCandleCache[assetId].barDurationSeconds;
+
+  renderPriceSeries();
+  renderVolumeSeries();
+  updateIndicatorSeries();
+
+  if (chart) chart.timeScale().fitContent();
+  if (rsiChart) rsiChart.timeScale().fitContent();
+  if (!isHoveringChart) showLastCandleOhlc();
+}
+
 async function loadChartData(assetId, timeframeKey) {
   if (!priceSeries) return;
+  if (PANEL_META[assetId]?.category === 'metal') {
+    loadMetalChartData(assetId);
+    return;
+  }
   const timeframe = TIMEFRAME_CONFIG[timeframeKey] || TIMEFRAME_CONFIG['1D'];
   try {
     const [ohlcRes, volRes] = await Promise.all([
@@ -733,29 +943,69 @@ async function loadChartData(assetId, timeframeKey) {
 }
 
 // ---------------------------------------------------------------------
-// Precio en vivo (CoinGecko simple/price, igual que el ticker del dashboard)
+// Precio en vivo: criptomonedas por CoinGecko (simple/price, un solo
+// pedido para todas), metales por gold-api.com (un pedido por metal —
+// esa API no ofrece un endpoint combinado, pero es gratuita y sin límite
+// de peticiones para precio en vivo).
 // ---------------------------------------------------------------------
 
-async function pollPrices() {
-  try {
-    const ids = PANEL_ASSETS.join(',');
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('No se pudo obtener precios');
-    const data = await res.json();
+async function fetchCryptoPrices(ids) {
+  if (!ids.length) return {};
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('No se pudo obtener precios');
+  return res.json();
+}
 
-    PANEL_ASSETS.forEach((id) => {
-      const entry = data[id];
+async function fetchMetalPrice(id) {
+  try {
+    const res = await fetch(`https://api.gold-api.com/price/${PANEL_META[id].metalSymbol}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.price === 'number' ? data.price : null;
+  } catch {
+    return null;
+  }
+}
+
+async function pollPrices() {
+  const cryptoIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'crypto');
+  const metalIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'metal');
+
+  try {
+    const [cryptoData, metalPrices] = await Promise.all([
+      fetchCryptoPrices(cryptoIds),
+      Promise.all(metalIds.map((id) => fetchMetalPrice(id))),
+    ]);
+
+    cryptoIds.forEach((id) => {
+      const entry = cryptoData[id];
       if (!entry) return;
       previousPrices[id] = currentPrices[id];
       currentPrices[id] = entry.usd;
       dayChangePercents[id] = entry.usd_24h_change ?? 0;
     });
 
+    metalIds.forEach((id, i) => {
+      const price = metalPrices[i];
+      if (typeof price !== 'number') return;
+      previousPrices[id] = currentPrices[id];
+      currentPrices[id] = price;
+      // gold-api.com no da variación 24h — se deja sin dato (la lista y el
+      // encabezado muestran "—" en vez de inventar un porcentaje).
+    });
+
     updatePriceDisplay();
     updateLivePriceLine();
-    updateAssetTabBadges();
-    updateLiveCandle(selectedAsset, currentPrices[selectedAsset]);
+    updateInstrumentPrices();
+
+    // Los metales acumulan su vela en vivo siempre, esté o no seleccionado
+    // ese activo en pantalla en este momento (así no se pierde tiempo si
+    // el usuario cambia a un metal más tarde en la sesión).
+    metalIds.forEach((id) => updateLiveCandle(id, currentPrices[id]));
+    if (PANEL_META[selectedAsset]?.category !== 'metal') {
+      updateLiveCandle(selectedAsset, currentPrices[selectedAsset]);
+    }
   } catch (err) {
     // Silencioso: se reintenta en el próximo ciclo.
   }
@@ -763,14 +1013,17 @@ async function pollPrices() {
 
 function updatePriceDisplay() {
   const price = currentPrices[selectedAsset];
-  const change = dayChangePercents[selectedAsset] ?? 0;
+  const change = dayChangePercents[selectedAsset];
   const valueEl = document.getElementById('panel-price-value');
   const changeEl = document.getElementById('panel-price-change');
 
   valueEl.textContent = typeof price === 'number' ? money(price) : '—';
 
   changeEl.classList.remove('is-up', 'is-down', 'is-flat');
-  if (change > 0) {
+  if (typeof change !== 'number') {
+    changeEl.classList.add('is-flat');
+    changeEl.textContent = 'cambio 24h no disponible';
+  } else if (change > 0) {
     changeEl.classList.add('is-up');
     changeEl.textContent = `▲ ${change.toFixed(2)}% (24h)`;
   } else if (change < 0) {
@@ -946,6 +1199,8 @@ async function resolveOptionNow(option) {
 }
 
 async function fetchSinglePrice(assetId) {
+  const meta = PANEL_META[assetId];
+  if (meta && meta.category === 'metal') return fetchMetalPrice(assetId);
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assetId}&vs_currencies=usd`;
     const res = await fetch(url);

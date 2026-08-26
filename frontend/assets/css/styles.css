@@ -1288,14 +1288,157 @@ a.brand:hover {
 /* ---------------------------------------------------------------------- */
 
 .panel-body {
-  max-width: 1400px;
+  max-width: 1560px;
   margin: 0 auto;
   padding: 24px 28px 64px;
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: 260px 1fr 360px;
   gap: 20px;
   align-items: start;
 }
+
+/* ---- Lista de instrumentos (buscador + categorías + precios en vivo) ---- */
+
+.instrument-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 560px;
+  max-height: 560px;
+  overflow: hidden;
+}
+
+.instrument-panel-header {
+  padding: 14px 14px 10px;
+}
+.instrument-panel-header input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.instrument-panel-header input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.instrument-category-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.instrument-category-tab {
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+.instrument-category-tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
+.instrument-category-tab.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.instrument-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+.instrument-list-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.instrument-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.instrument-row:hover { background: var(--surface-hover); }
+.instrument-row.is-active { background: var(--accent-soft); }
+
+.instrument-row-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 12px;
+  color: #fff;
+}
+.instrument-row-icon.is-crypto { background: var(--accent); }
+.instrument-row-icon.is-metal { background: var(--gold); }
+
+.instrument-row-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.instrument-row-name strong { font-size: 12.5px; color: var(--text-primary); }
+.instrument-row-name small { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.instrument-row-price {
+  flex-shrink: 0;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.instrument-row-price strong { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.instrument-row-change { font-size: 10.5px; font-weight: 700; }
+.instrument-row-change.is-up { color: var(--good); }
+.instrument-row-change.is-down { color: var(--critical); }
+.instrument-row-change.is-flat { color: var(--text-muted); }
+
+/* ---- Título del activo seleccionado, sobre el gráfico ---- */
+
+.panel-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.panel-chart-title-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: #fff;
+}
+.panel-chart-title-icon.is-crypto { background: var(--accent); }
+.panel-chart-title-icon.is-metal { background: var(--gold); }
+.panel-chart-title-name { font-weight: 800; font-size: 15px; line-height: 1.2; }
+.panel-chart-title-symbol { font-size: 11px; color: var(--text-muted); font-weight: 700; }
 
 .panel-chart-card {
   background: var(--surface);
@@ -1315,29 +1458,6 @@ a.brand:hover {
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 14px;
-}
-
-.asset-tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.asset-tab {
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: transparent;
-  color: var(--text-secondary);
-  font-weight: 700;
-  font-size: 13px;
-  cursor: pointer;
-}
-.asset-tab:hover { background: var(--surface-hover); }
-.asset-tab.is-active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent-hover);
 }
 
 .panel-price-display { text-align: right; }
@@ -1509,20 +1629,14 @@ a.brand:hover {
   pointer-events: none;
 }
 
-.asset-tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  line-height: 1.2;
+.chart-tool-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
-.asset-tab-change {
-  font-size: 10px;
-  font-weight: 700;
+.chart-tool-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
 }
-.asset-tab-change.is-up { color: var(--good); }
-.asset-tab-change.is-down { color: var(--critical); }
-.asset-tab-change.is-flat { color: var(--text-muted); }
 
 .panel-chart-card.is-fullscreen {
   position: fixed;
@@ -1606,9 +1720,15 @@ a.brand:hover {
 .badge.badge-perdida { background: var(--critical-soft); color: var(--critical); }
 .badge.badge-empate { background: var(--surface-2); color: var(--text-muted); }
 
+@media (max-width: 1240px) {
+  .panel-body { grid-template-columns: 220px 1fr; }
+  .panel-sidebar { grid-column: 1 / -1; }
+}
+
 @media (max-width: 980px) {
   .panel-body { grid-template-columns: 1fr; }
   .panel-chart-card { min-height: 420px; }
+  .instrument-panel { max-height: 320px; min-height: 260px; }
 }
 
 /* ---------------------------------------------------------------------- */

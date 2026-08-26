@@ -75,6 +75,11 @@ así no hay que repetir el contexto en cada conversación.
   indicadores técnicos (medias móviles, Bandas de Bollinger, volumen,
   RSI) con su propio sub-gráfico sincronizado, barra OHLC y pantalla
   completa** — ver sección 22 (agosto 2026).
+- **Brecha de seguridad cerrada (ya nadie puede asignarse su propio
+  balance — solo Zenith Capital lo asigna), lista de instrumentos con
+  buscador y categorías estilo Exness, 37 criptomonedas y 5 metales
+  reales (Oro, Plata, Platino, Paladio, Cobre) en el panel de trading** —
+  ver sección 23 (agosto 2026).
   - **Depósitos y retiros**: al crearse no tienen todavía una cuenta
     asignada (`accountId: null`, estado `en_proceso`). Al aprobar, Lucas
     elige a qué cuenta del usuario va (o de cuál sale) y puede editar el
@@ -1200,6 +1205,69 @@ cambio** (no solo el símbolo).
 - Los precios en vivo se piden cada 5 segundos en vez de cada 15 (antes
   reservado a otras pantallas), para que el movimiento de la vela en vivo
   se sienta más fluido.
+
+## 23. Cierre de una brecha de seguridad (balance auto-asignable), lista de instrumentos estilo Exness, y metales reales en el panel de trading (agosto 2026)
+
+- **Brecha cerrada: un usuario ya no puede asignarse su propio balance.**
+  Se descubrió que el formulario "Nueva cuenta" / "Editar cuenta" del
+  dashboard (visible para cualquier usuario logueado, no solo para Lucas)
+  tenía campos de Balance y Equity editables que se guardaban tal cual —
+  es decir, cualquier persona podía crear o editar una cuenta y escribir
+  el saldo que quisiera, sin pasar por depósito ni aprobación. Esto se
+  corrigió en dos capas:
+  - **Backend** (`routes/accounts.js`): `POST /api/accounts` ahora crea
+    toda cuenta nueva con `balance: 0, equity: 0` sin importar qué mande
+    el cliente, y `PUT /api/accounts/:id` (la ruta de autoservicio del
+    usuario) ya ni siquiera lee esos campos del body — se probó a mano
+    mandando `balance: 999999` directamente a la API (sin pasar por el
+    formulario) y quedó confirmado que no tiene ningún efecto.
+  - **Frontend** (`dashboard.html`/`dashboard.js`): los campos Balance y
+    Equity del formulario ahora son de solo lectura (muestran "Se asigna
+    al confirmar tu depósito" en una cuenta nueva, o el valor actual en
+    una cuenta existente), con una nota explicando que solo el equipo de
+    Zenith Capital puede asignar o cambiar el saldo real, desde el panel
+    de administrador (`PUT /api/admin/accounts/:id/edit`, sin tocar).
+  - El usuario sigue pudiendo crear su propia cuenta (número, tipo, moneda,
+    apalancamiento) y usar el resto de la plataforma con ella — solo el
+    saldo queda fuera de su alcance hasta que se le asigne manualmente.
+- **Mensaje correcto en el panel de trading cuando el saldo es $0**: antes,
+  el único aviso disponible era "Todavía no tienes ninguna cuenta" (pensado
+  para cuando de verdad no existe ninguna). Como ahora toda cuenta nueva
+  empieza en $0, se agregó un segundo aviso, distinto, para cuando la
+  cuenta sí existe pero todavía no tiene saldo: "No tienes saldo disponible
+  en esta cuenta todavía. Cuando el equipo de Zenith Capital confirme tu
+  depósito, tu saldo aparecerá aquí..." — con el monto, la duración y los
+  botones Compra/Vende deshabilitados en ambos casos, para no dejar
+  intentar operar sin poder. Cambiar de cuenta en el selector reevalúa
+  cuál de los dos avisos (o ninguno) corresponde mostrar.
+- **Lista de instrumentos con buscador y categorías (estilo Exness)**:
+  las pestañas simples de activos se reemplazaron por un panel lateral
+  igual al de una plataforma de trading real — buscador de texto,
+  pestañas de categoría (Todos / Cripto / Metales) y una lista con ícono,
+  símbolo, nombre, precio en vivo y variación 24h por fila, con la fila
+  del activo seleccionado resaltada. El encabezado del gráfico ahora
+  muestra el nombre y símbolo del activo activo en vez de repetir la
+  lista completa de pestañas.
+- **Lista de criptomonedas mucho más amplia**: de 13 a 37 criptomonedas
+  reales y conocidas (Bitcoin, Ethereum, Solana, XRP, Cardano, Polygon,
+  TON, Uniswap, Arbitrum, Optimism, Aptos, Sui, Pepe, Bonk, y más — todas
+  con precio real de CoinGecko), organizadas para poder encontrarlas por
+  buscador o categoría en vez de una fila interminable de pestañas.
+- **Metales reales (Oro, Plata, Platino, Paladio, Cobre)**, vía
+  [gold-api.com](https://gold-api.com) — una API gratuita, sin llave y sin
+  límite de peticiones para precio en vivo. Como esta API no ofrece
+  historial gratuito de velas (a diferencia de CoinGecko para
+  criptomonedas), el gráfico de un metal se construye 100% en vivo, vela
+  por vela, desde el momento en que se abre por primera vez, y sigue
+  acumulando mientras la pestaña esté abierta (el progreso no se pierde
+  al cambiar de activo y volver, dentro de la misma sesión). Por esto
+  mismo, al seleccionar un metal: los botones de plazo (1D/7D/1M/3M/1A) se
+  deshabilitan (no hay historial distinto que traer para cada uno), el
+  indicador de Volumen se deshabilita (gold-api.com no da ese dato), y la
+  nota bajo el gráfico lo explica con todas las letras. El precio de
+  entrada/salida de cada operación con un metal sí es 100% real y en vivo,
+  igual que con criptomonedas — nada de esto afecta la validez de las
+  operaciones, solo la profundidad del historial visual del gráfico.
 
 ## Restricciones de seguridad (no negociables)
 
