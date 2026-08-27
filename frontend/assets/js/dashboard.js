@@ -357,9 +357,21 @@ function wireUserMenu() {
 // Utilidades de formato
 // ---------------------------------------------------------------------
 
+// Códigos como "USDT" no son una moneda ISO real (no tienen símbolo,
+// decimales estándar, etc. según el navegador) — pedirle a
+// toLocaleString que formatee "como moneda" con uno de esos códigos
+// hace que directamente falle con un error, lo que antes rompía la
+// tarjeta entera de una billetera en cripto. Con las monedas ISO reales
+// (USD, EUR, ARS, etc.) se sigue usando el formato bonito con su
+// símbolo; para cualquier código que el navegador no reconozca, se cae
+// a mostrar el número con el código al lado (ej. "1,234.50 USDT").
 function money(value, currency = 'USD') {
   const n = Number(value) || 0;
-  return n.toLocaleString('en-US', { style: 'currency', currency, maximumFractionDigits: 2 });
+  try {
+    return n.toLocaleString('en-US', { style: 'currency', currency, maximumFractionDigits: 2 });
+  } catch (e) {
+    return `${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} ${currency}`;
+  }
 }
 
 function compactMoney(value) {

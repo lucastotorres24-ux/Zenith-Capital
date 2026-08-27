@@ -1750,6 +1750,33 @@ cambio** (no solo el símbolo).
   USD, no el número en ARS. Todo funcionó igual con capturas de pantalla
   del panel confirmándolo visualmente.
 
+## 34. Más monedas al crear una billetera, y una moneda no reconocida ya no rompe la tarjeta (agosto 2026)
+
+- Lucas reportó que al crear una billetera nueva, el selector de "Moneda"
+  solo ofrecía USD, EUR y USDT, y pidió que estuvieran todas las que ya
+  soporta la plataforma.
+- Se agregaron las mismas monedas que ya existen en el resto del sitio
+  (el selector "Moneda" del menú de usuario, sección 18): ARS, PEN, COP,
+  MXN y CLP, además de BRL — junto a USD, EUR y USDT, que ya estaban.
+- Al revisar esto se encontró un bug real, todavía no reportado: "USDT"
+  no es un código de moneda oficial (ISO), y pedirle al navegador que
+  formatee un monto "como moneda" con un código que no reconoce falla
+  directamente con un error — así que cualquier billetera creada en USDT
+  antes de esta corrección se arriesgaba a que su tarjeta de Balance/
+  Equity/P&L no se dibujara bien. Se corrigió para que, si el código de
+  moneda no es uno que el navegador reconozca, en vez de fallar se
+  muestre el número seguido del código (ej. "0.00 USDT") — igual de claro,
+  sin romper nada. Las monedas reales (USD, EUR, ARS, etc.) se siguen
+  viendo con su símbolo normal ($1,234.50, €1,234.50, etc.).
+- Se recuerda que la moneda de una billetera es solo una etiqueta —
+  cuánto vale de verdad esa billetera (su Balance/Equity real) lo sigue
+  asignando el equipo de Zenith Capital en USD desde el panel de admin,
+  como siempre; esto no cambia esa parte.
+- Verificado con una prueba automatizada: las 9 monedas aparecen en el
+  selector al crear una billetera nueva, y crear una billetera en USDT ya
+  no genera ningún error — se ve correctamente como "0.00 USDT" en su
+  tarjeta, confirmado también con una captura de pantalla.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,
