@@ -67,6 +67,71 @@ Object.keys(CRYPTO_META).forEach((id) => { PANEL_META[id] = { ...CRYPTO_META[id]
 Object.keys(METAL_META).forEach((id) => { PANEL_META[id] = { ...METAL_META[id], category: 'metal' }; });
 const PANEL_ASSETS = [...Object.keys(CRYPTO_META), ...Object.keys(METAL_META)];
 
+// Símbolo de Binance para cada criptomoneda (ver market-ws.js) — se usa
+// para pedir historial de velas y precio en vivo por WebSocket, mucho más
+// rápido y sin el límite de peticiones de CoinGecko. Si Binance no está
+// disponible (o no tiene alguno de estos símbolos), cada función cae de
+// vuelta sola a CoinGecko para ese activo puntual.
+const BINANCE_SYMBOL = {
+  bitcoin: 'BTCUSDT',
+  ethereum: 'ETHUSDT',
+  binancecoin: 'BNBUSDT',
+  solana: 'SOLUSDT',
+  ripple: 'XRPUSDT',
+  cardano: 'ADAUSDT',
+  dogecoin: 'DOGEUSDT',
+  polkadot: 'DOTUSDT',
+  chainlink: 'LINKUSDT',
+  'avalanche-2': 'AVAXUSDT',
+  litecoin: 'LTCUSDT',
+  tron: 'TRXUSDT',
+  'bitcoin-cash': 'BCHUSDT',
+  'polygon-ecosystem-token': 'POLUSDT',
+  toncoin: 'TONUSDT',
+  'shiba-inu': 'SHIBUSDT',
+  uniswap: 'UNIUSDT',
+  stellar: 'XLMUSDT',
+  cosmos: 'ATOMUSDT',
+  near: 'NEARUSDT',
+  'internet-computer': 'ICPUSDT',
+  filecoin: 'FILUSDT',
+  'hedera-hashgraph': 'HBARUSDT',
+  vechain: 'VETUSDT',
+  algorand: 'ALGOUSDT',
+  aptos: 'APTUSDT',
+  sui: 'SUIUSDT',
+  arbitrum: 'ARBUSDT',
+  optimism: 'OPUSDT',
+  'injective-protocol': 'INJUSDT',
+  'the-graph': 'GRTUSDT',
+  aave: 'AAVEUSDT',
+  'render-token': 'RENDERUSDT',
+  pepe: 'PEPEUSDT',
+  bonk: 'BONKUSDT',
+  'the-sandbox': 'SANDUSDT',
+  decentraland: 'MANAUSDT',
+};
+const ASSET_ID_BY_BINANCE_SYMBOL = Object.fromEntries(
+  Object.entries(BINANCE_SYMBOL).map(([id, symbol]) => [symbol, id])
+);
+
+// Plazo elegido en pantalla → intervalo y cantidad de velas a pedirle a
+// Binance. Binance permite hasta 1000 velas por pedido, así que todos
+// estos plazos entran en un solo pedido (nada de paginar).
+const BINANCE_INTERVAL_CONFIG = {
+  '1D': { interval: '5m', limit: 288 },
+  '7D': { interval: '30m', limit: 336 },
+  '1M': { interval: '2h', limit: 360 },
+  '3M': { interval: '6h', limit: 360 },
+  '1A': { interval: '1d', limit: 365 },
+};
+
+// Cuánto tiempo se considera "fresco" un precio recibido por el stream en
+// vivo de Binance antes de que pollPrices() vuelva a pedirlo por CoinGecko
+// como respaldo (ver fetchCryptoPrices más abajo).
+const WS_TICKER_FRESH_MS = 20_000;
+const wsTickerCache = {}; // Binance symbol -> { price, changePercent, at }
+
 const PRICE_POLL_MS = 5_000;
 const CHART_REFRESH_MS = 60_000;
 const PAYOUT_PERCENT = 85;
@@ -168,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadOptionsHistory();
   loadChartData(selectedAsset, selectedTimeframe);
   pollPrices();
+  wireLiveTickerStream();
 
   updatePayoutPreview();
 
@@ -1005,7 +1071,44 @@ async function loadChartData(assetId, timeframeKey) {
 
   const timeframe = TIMEFRAME_CONFIG[timeframeKey] || TIMEFRAME_CONFIG['1D'];
 
-  // Hasta 3 intentos (el original + 2 reintentos) antes de rendirse: una
+  // Camino preferido: Binance por WebSocket (ver market-ws.js) — no tiene
+  // el límite de peticiones gratuito de CoinGecko y ya trae el volumen
+  // incluido en la misma respuesta, así que no hace falta pedirlo aparte.
+  // Si Binance no conecta o no tiene este símbolo, se sigue abajo con
+  // CoinGecko exactamente como antes — este activo nunca se queda sin
+  // gráfico solo porque Binance no esté disponible en este momento.
+  const binanceSymbol = BINANCE_SYMBOL[assetId];
+  if (binanceSymbol && MarketWS.isApiAvailable()) {
+    try {
+      const binConfig = BINANCE_INTERVAL_CONFIG[timeframeKey] || BINANCE_INTERVAL_CONFIG['1D'];
+      const candles = await MarketWS.getKlines(binanceSymbol, binConfig.interval, binConfig.limit);
+      if (myToken !== chartLoadToken) return;
+
+      if (candles.length >= 2) {
+        const gaps = [];
+        for (let i = 1; i < candles.length; i++) gaps.push(candles[i].time - candles[i - 1].time);
+        gaps.sort((a, b) => a - b);
+        const freshBarDuration = gaps[Math.floor(gaps.length / 2)] || 1800;
+
+        cryptoCandleCache[cacheKey] = { candles, barDurationSeconds: freshBarDuration };
+
+        if (assetId === selectedAsset && timeframeKey === selectedTimeframe) {
+          rawCandles = candles;
+          barDurationSeconds = freshBarDuration;
+          renderActiveCandles();
+          showChartLoading(false);
+        }
+        return; // éxito por Binance — no hace falta tocar a CoinGecko
+      }
+    } catch (err) {
+      // Binance no disponible ahora mismo (red que bloquea WebSocket, este
+      // símbolo puntual no existe ahí, etc.) — se sigue abajo con
+      // CoinGecko, el camino que ya funcionaba antes.
+    }
+  }
+
+  // Camino de respaldo: CoinGecko (como antes de agregar Binance). Hasta 3
+  // intentos (el original + 2 reintentos) antes de rendirse: una
   // sola falla de red (muy posible contra la API gratuita de CoinGecko) no
   // debería dejar al usuario con el gráfico vacío para siempre ni obligarlo
   // a adivinar que tiene que cambiar de activo y volver para reintentar.
@@ -1148,12 +1251,59 @@ document.addEventListener('DOMContentLoaded', () => {
 // de peticiones para precio en vivo).
 // ---------------------------------------------------------------------
 
+// Actualiza el precio de un activo apenas Binance lo empuja por el
+// WebSocket en vivo (ver market-ws.js) — no espera al próximo ciclo de
+// pollPrices() de 5 segundos, así que se siente instantáneo de verdad en
+// vez de "cada pocos segundos".
+function handleLiveTick(data) {
+  const symbol = data.s;
+  wsTickerCache[symbol] = { price: Number(data.c), changePercent: Number(data.P), at: Date.now() };
+
+  const id = ASSET_ID_BY_BINANCE_SYMBOL[symbol];
+  if (!id) return;
+  previousPrices[id] = currentPrices[id];
+  currentPrices[id] = Number(data.c);
+  dayChangePercents[id] = Number(data.P);
+
+  updatePriceDisplay();
+  updateLivePriceLine();
+  updateInstrumentPrices();
+  if (PANEL_META[id]?.category !== 'metal') updateLiveCandle(id, currentPrices[id]);
+}
+
+function wireLiveTickerStream() {
+  const symbols = Object.values(BINANCE_SYMBOL);
+  MarketWS.onTicker(symbols, handleLiveTick);
+}
+
+// Pide precios de criptomonedas a CoinGecko SOLO para los activos que el
+// stream en vivo de Binance todavía no cubre (nunca conectó, o su símbolo
+// no existe ahí) — si Binance ya está entregando un precio fresco para
+// todos, esta función no le pide nada a CoinGecko, que es precisamente lo
+// que evita agotar su límite gratuito de peticiones.
 async function fetchCryptoPrices(ids) {
   if (!ids.length) return {};
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`;
+
+  const fromWs = {};
+  const missing = [];
+  const nowMs = Date.now();
+  ids.forEach((id) => {
+    const symbol = BINANCE_SYMBOL[id];
+    const tick = symbol && wsTickerCache[symbol];
+    if (tick && nowMs - tick.at < WS_TICKER_FRESH_MS) {
+      fromWs[id] = { usd: tick.price, usd_24h_change: tick.changePercent };
+    } else {
+      missing.push(id);
+    }
+  });
+
+  if (!missing.length) return fromWs;
+
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${missing.join(',')}&vs_currencies=usd&include_24hr_change=true`;
   const res = await fetchWithTimeout(url, {}, 8000);
   if (!res.ok) throw new Error('No se pudo obtener precios');
-  return res.json();
+  const restData = await res.json();
+  return { ...fromWs, ...restData };
 }
 
 async function fetchMetalPrice(id) {

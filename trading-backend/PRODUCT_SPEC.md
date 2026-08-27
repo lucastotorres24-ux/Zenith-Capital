@@ -1632,6 +1632,58 @@ cambio** (no solo el símbolo).
   y que el contador de pendientes de esa persona baja correctamente
   después.
 
+## 32. Cambio de CoinGecko a Binance para precio en vivo e historial de velas — carga casi instantánea (agosto 2026)
+
+- A pesar de la corrección de la sección 29, Lucas reportó que las gráficas
+  seguían demorando mucho en cargar apenas se entra a ellas, y que
+  cualquier acción (cambiar de activo, de plazo) generaba una espera
+  larga — pidió explícitamente evaluar mover los gráficos a otra fuente,
+  proponiendo investing.com.
+- Investing.com no ofrece una API gratuita de datos para consumir desde
+  código propio — solo un widget embebido con su propio diseño ajeno, que
+  no se puede personalizar ni incluir la moneda propia Zenith (ZNT). Se le
+  presentaron a Lucas las alternativas reales y eligió cambiar a Binance.
+- Binance tiene un límite de peticiones muchísimo más alto que el plan
+  gratuito de CoinGecko, así que en teoría resolvía el problema de fondo
+  — pero al investigar se encontró un obstáculo real: la API normal de
+  Binance (la que se llama con una petición HTTP común) no permite que un
+  navegador la llame directamente desde una página web en otro dominio
+  (un problema de "CORS", una regla de seguridad del navegador) — llamarla
+  así falla siempre, sin excepción, sin importar desde dónde se use.
+- La solución: Binance sí permite conectarse libremente por WebSocket
+  (una conexión persistente, distinta a una petición HTTP normal, a la
+  que esa regla de CORS no le aplica). Se construyó un cliente propio
+  (`market-ws.js`) que usa exclusivamente WebSocket para hablar con
+  Binance:
+  - El historial de velas de cada gráfico ahora se pide por WebSocket
+    (un solo pedido, con el volumen ya incluido en la respuesta, algo que
+    antes con CoinGecko necesitaba dos peticiones separadas). En las
+    pruebas, esto bajó el tiempo de "entrar a un gráfico" de varios
+    segundos (o la espera completa del límite de CoinGecko cuando estaba
+    activo) a *menos de un cuarto de segundo*.
+  - El precio en vivo de cada criptomoneda ahora llega empujado por
+    Binance por WebSocket apenas cambia — no hay que "preguntar cada 5
+    segundos" como antes; el precio en pantalla se actualiza al instante,
+    en el momento real en que cambia.
+  - Si Binance no logra conectar por cualquier motivo (una red que
+    bloquea WebSocket, Binance caído, o alguna moneda puntual que no
+    tenga ahí) cada función cae de vuelta sola a CoinGecko, exactamente
+    como funcionaba antes — el sitio nunca se queda sin datos por
+    depender de una sola fuente.
+  - Los metales (oro, plata, platino, paladio, cobre) siguen igual que
+    antes, por gold-api.com — Binance no ofrece metales.
+  - Tether (USDT), en el ticker del dashboard, se muestra fijo en $1.00 en
+    vez de pedirlo a cualquier fuente — está diseñado para valer siempre
+    un dólar (respaldado 1 a 1), así que mostrar otra cosa sería menos
+    honesto, no más, y evita depender de una fuente de datos aparte solo
+    para una moneda que casi nunca se mueve.
+- Se verificó con pruebas automatizadas (simulando tanto "Binance
+  funciona perfecto" como "Binance está completamente bloqueado") que
+  ambos caminos funcionan: con Binance disponible, el gráfico carga en
+  fracciones de segundo sin pedirle nada a CoinGecko; con Binance
+  bloqueado, el sitio sigue funcionando exactamente como antes por el
+  respaldo de CoinGecko, sin quedar nunca sin datos.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

@@ -34,6 +34,35 @@ const CRYPTO_META = {
   zenith: { symbol: 'ZNT', name: 'Zenith' },
 };
 const TICKER_REFRESH_MS = 15_000;
+
+// Símbolo de Binance para cada cripto (ver market-ws.js) — se usa para el
+// precio en vivo por WebSocket, sin el límite de peticiones de CoinGecko.
+// Tether (USDT) no tiene un par "USDT/USDT" en ningún exchange porque es
+// la propia moneda de referencia — como está diseñada para valer siempre
+// $1 (está respaldada 1 a 1), se muestra fija en $1.00 en vez de armar una
+// fuente de datos aparte solo para una moneda que casi nunca se mueve.
+const BINANCE_SYMBOL = {
+  bitcoin: 'BTCUSDT',
+  ethereum: 'ETHUSDT',
+  binancecoin: 'BNBUSDT',
+  solana: 'SOLUSDT',
+  ripple: 'XRPUSDT',
+  cardano: 'ADAUSDT',
+  dogecoin: 'DOGEUSDT',
+  polkadot: 'DOTUSDT',
+  chainlink: 'LINKUSDT',
+  'avalanche-2': 'AVAXUSDT',
+  litecoin: 'LTCUSDT',
+  tron: 'TRXUSDT',
+  'bitcoin-cash': 'BCHUSDT',
+  'pax-gold': 'PAXGUSDT',
+};
+const ASSET_ID_BY_BINANCE_SYMBOL = Object.fromEntries(
+  Object.entries(BINANCE_SYMBOL).map(([id, symbol]) => [symbol, id])
+);
+const WS_TICKER_FRESH_MS = 20_000;
+const wsTickerCache = {}; // Binance symbol -> { price, changePercent, at }
+let latestTickerData = {}; // último dato completo mostrado en la tabla (por id de CoinGecko)
 // El backend demora entre 1 y 2 minutos en aplicar de verdad lo que Lucas
 // aprueba/edita desde el panel de administrador (revisión manual simulada
 // — ver data/store.js), así que el dashboard vuelve a consultar cuentas,
@@ -106,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTrades();
   loadTicker();
   loadZenithTicker();
+  wireLiveTickerStream();
   // El ticker de cripto pide a CoinGecko, que tiene un límite de
   // peticiones gratuitas por minuto — si la pestaña del dashboard queda
   // abierta en segundo plano (otra pestaña, minimizada) sin que nadie la
@@ -1660,15 +1690,72 @@ async function generateAdvisory(event) {
 // Ticker de cripto (CoinGecko, API pública sin key)
 // ---------------------------------------------------------------------
 
+// Apenas Binance empuja un precio nuevo por el WebSocket en vivo (ver
+// market-ws.js), se actualiza la tabla al instante — no hace falta
+// esperar al próximo ciclo de 15 segundos de loadTicker().
+function handleLiveTick(data) {
+  const symbol = data.s;
+  wsTickerCache[symbol] = { price: Number(data.c), changePercent: Number(data.P), at: Date.now() };
+
+  const id = ASSET_ID_BY_BINANCE_SYMBOL[symbol];
+  if (!id) return;
+  latestTickerData = { ...latestTickerData, [id]: { usd: Number(data.c), usd_24h_change: Number(data.P) } };
+  renderTicker(latestTickerData);
+
+  const statusEl = document.getElementById('ticker-status');
+  statusEl.textContent = 'en vivo';
+  statusEl.style.color = 'var(--good)';
+}
+
+function wireLiveTickerStream() {
+  MarketWS.onTicker(Object.values(BINANCE_SYMBOL), handleLiveTick);
+}
+
 async function loadTicker() {
   const statusEl = document.getElementById('ticker-status');
+
+  // Tether se muestra fijo en $1 (ver nota junto a BINANCE_SYMBOL) — esto
+  // no depende de ninguna red, así que se aplica siempre, incluso si el
+  // pedido de abajo a CoinGecko llega a fallar por completo (para que
+  // Tether no desaparezca de la lista solo porque el resto de los precios
+  // no pudo conectar).
+  latestTickerData = { ...latestTickerData, tether: { usd: 1, usd_24h_change: 0 } };
+  renderTicker(latestTickerData);
+
   try {
-    const ids = CRYPTO_IDS.join(',');
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
-    const res = await fetchWithTimeout(url, {}, 8000);
-    if (!res.ok) throw new Error('No se pudo obtener precios');
-    const data = await res.json();
-    renderTicker(data);
+    // Zenith tiene su propio endpoint (loadZenithTicker), así que no se
+    // pide acá.
+    const restIds = CRYPTO_IDS.filter((id) => id !== 'tether' && id !== 'zenith');
+
+    // Solo se le pide a CoinGecko lo que el stream en vivo de Binance
+    // todavía no esté cubriendo con un precio fresco — si Binance ya está
+    // entregando todo, esto no le pide nada a CoinGecko (evita agotar su
+    // límite gratuito de peticiones, la causa real de la mala
+    // "conectividad" reportada — ver PRODUCT_SPEC).
+    const fromWs = {};
+    const missing = [];
+    const nowMs = Date.now();
+    restIds.forEach((id) => {
+      const symbol = BINANCE_SYMBOL[id];
+      const tick = symbol && wsTickerCache[symbol];
+      if (tick && nowMs - tick.at < WS_TICKER_FRESH_MS) {
+        fromWs[id] = { usd: tick.price, usd_24h_change: tick.changePercent };
+      } else {
+        missing.push(id);
+      }
+    });
+
+    let restData = {};
+    if (missing.length) {
+      const ids = missing.join(',');
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
+      const res = await fetchWithTimeout(url, {}, 8000);
+      if (!res.ok) throw new Error('No se pudo obtener precios');
+      restData = await res.json();
+    }
+
+    latestTickerData = { ...latestTickerData, ...fromWs, ...restData };
+    renderTicker(latestTickerData);
     statusEl.textContent = 'en vivo';
     statusEl.style.color = 'var(--good)';
   } catch (err) {
