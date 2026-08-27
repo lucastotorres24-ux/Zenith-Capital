@@ -344,6 +344,9 @@ const Api = {
   updateProfile(payload) {
     return this.request('/api/auth/profile', { method: 'PUT', body: payload });
   },
+  setPreferredCurrency(code) {
+    return this.request('/api/auth/currency', { method: 'PUT', body: { code } });
+  },
 
   // ---- Documentos (PDFs) ----
   getDocuments() {

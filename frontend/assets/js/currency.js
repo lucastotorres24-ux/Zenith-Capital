@@ -54,11 +54,27 @@ const Currency = (() => {
     return LABELS[code] || code;
   }
 
+  // Avisa al backend, en silencio y sin bloquear nada, qué moneda quedó
+  // elegida — solo para que el panel de administrador pueda mostrar el
+  // balance también en la moneda de cada usuario (ver PRODUCT_SPEC). Si
+  // esto falla (sin conexión, sesión no iniciada porque currency.js
+  // también corre en la pantalla de acceso antes de tener sesión, etc.)
+  // no pasa nada: es puramente informativo, nunca bloquea el uso normal
+  // de la moneda elegida en esta sesión.
+  function persistToServer(code) {
+    try {
+      if (typeof Api !== 'undefined' && Api.isLoggedIn && Api.isLoggedIn()) {
+        Api.setPreferredCurrency(code).catch(() => {});
+      }
+    } catch (e) { /* nunca debe romper la selección de moneda en pantalla */ }
+  }
+
   function setCode(code) {
     if (!SUPPORTED.includes(code)) return;
     state.code = code;
     try { localStorage.setItem(STORAGE_KEY, code); } catch (e) { /* modo privado, etc. */ }
     document.dispatchEvent(new CustomEvent('zenith-currency-changed', { detail: { code } }));
+    persistToServer(code);
   }
 
   function rateFor(code) {
@@ -153,6 +169,7 @@ const Currency = (() => {
 
     state.ready = true;
     document.dispatchEvent(new CustomEvent('zenith-currency-ready', { detail: { code: state.code } }));
+    persistToServer(state.code);
   }
 
   return { init, getCode, setCode, isReady, hasRate, toLocal, toUsd, format, labelFor, SUPPORTED };

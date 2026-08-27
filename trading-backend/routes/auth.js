@@ -12,7 +12,9 @@ const {
   updateUserPassword,
   getUserProfile,
   updateUserProfile,
+  setPreferredCurrency,
 } = require('../data/store');
+const { FALLBACK_RATES } = require('../data/currency');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -219,6 +221,21 @@ router.put('/profile', requireAuth, (req, res) => {
   const updated = updateUserProfile(req.user.id, fields);
   if (!updated) return res.status(404).json({ error: 'Usuario no encontrado' });
   res.json(updated);
+});
+
+// PUT /api/auth/currency { code } -> guarda, en silencio, qué moneda local
+// detectó/eligió el navegador de la persona (ver assets/js/currency.js).
+// Solo se usa para que el panel de administrador pueda mostrar el balance
+// también en la moneda del usuario, al lado del monto en USD — no afecta
+// en nada el balance real, que sigue siendo 100% en USD.
+router.put('/currency', requireAuth, (req, res) => {
+  const code = String(req.body.code || '').toUpperCase();
+  if (!Object.prototype.hasOwnProperty.call(FALLBACK_RATES, code)) {
+    return res.status(400).json({ error: 'Moneda no soportada' });
+  }
+  const updated = setPreferredCurrency(req.user.id, code);
+  if (!updated) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json({ ok: true, preferredCurrency: updated.preferredCurrency });
 });
 
 // POST /api/auth/change-password (requiere estar logueado)

@@ -84,6 +84,14 @@ function createUser({ username, passwordHash, fullName, email, phone, termsAccep
     phone,
     birthDate: null,
     address: null,
+    // Moneda local que la persona ve/usa para depositar y retirar (ver
+    // currency.js del frontend) — se guarda acá SOLO para que el panel de
+    // administrador pueda mostrar "cuánto es esto en la moneda del
+    // usuario" al lado del monto en USD; el sistema interno de balances
+    // sigue siendo 100% en USD, esto es puramente informativo/de
+    // conveniencia. null hasta que el navegador de la persona detecte o
+    // elija una.
+    preferredCurrency: null,
     termsAcceptedAt,
     createdAt: new Date().toISOString(),
     // Automatización de inversión (Diamante/Platino): activada por
@@ -110,6 +118,7 @@ function publicUser(user) {
     // `?? true` para que las cuentas creadas antes de este campo existir
     // (como la demo semilla) sigan teniendo la automatización activada.
     autoInvestEnabled: user.autoInvestEnabled ?? true,
+    preferredCurrency: user.preferredCurrency || null,
   };
 }
 
@@ -118,6 +127,20 @@ function setAutoInvestEnabled(userId, enabled) {
   const user = db.users.find((u) => u.id === userId);
   if (!user) return null;
   user.autoInvestEnabled = Boolean(enabled);
+  save(db);
+  return publicUser(user);
+}
+
+// Guarda la moneda que el navegador de la persona detectó o que ella
+// eligió a mano en el menú "Moneda" (ver currency.js) — se llama cada vez
+// que cambia, en silencio, de fondo, para que el panel de administrador
+// siempre pueda mostrar el valor más reciente sin que la persona tenga que
+// hacer nada aparte.
+function setPreferredCurrency(userId, code) {
+  const db = load();
+  const user = db.users.find((u) => u.id === userId);
+  if (!user) return null;
+  user.preferredCurrency = code;
   save(db);
   return publicUser(user);
 }
@@ -1188,6 +1211,7 @@ function getAllUsersAdminView() {
         phone: u.phone,
         birthDate: u.birthDate,
         address: u.address,
+        preferredCurrency: u.preferredCurrency || null,
         createdAt: u.createdAt || u.termsAcceptedAt || null,
         accounts,
         holdings,
@@ -1243,6 +1267,7 @@ module.exports = {
   runDueAdminActions,
   getAllUsersAdminView,
   setAutoInvestEnabled,
+  setPreferredCurrency,
   runAutoInvestIfDue,
   requestAccountEdit,
   requestHoldingEdit,

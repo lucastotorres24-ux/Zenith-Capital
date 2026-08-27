@@ -1684,6 +1684,72 @@ cambio** (no solo el símbolo).
   bloqueado, el sitio sigue funcionando exactamente como antes por el
   respaldo de CoinGecko, sin quedar nunca sin datos.
 
+## 33. Corrección del punto decimal en montos del admin, y Balance/Equity en la moneda local del usuario (agosto 2026)
+
+- Lucas reportó un bug real: al probar, ingresó un balance de "103.266.83"
+  USD en la billetera de un usuario, y al querer editar el total a mano no
+  lo dejaba escribir el segundo punto. Causa: los campos de Balance,
+  Equity y monto de depósito/retiro en el panel de admin eran
+  `<input type="number">` nativos del navegador — ese tipo de campo
+  bloquea por diseño escribir un segundo punto o coma, así que cualquier
+  formato con separador de miles (muy común para hispanohablantes, ej.
+  "103.266,83" o "103.266.83") era literalmente imposible de escribir.
+- Corrección: esos cuatro campos (Balance y Equity al editar una cuenta,
+  y el monto al aprobar un depósito o retiro) ahora son campos de texto
+  normales, con un intérprete propio (`parseFlexibleAmount`) que entiende
+  todos los formatos razonables: `103266.83`, `103.266.83`, `103.266,83`,
+  `103,266.83`, o un monto redondo como `103.266` (sin centavos). Si lo
+  escrito no se puede entender como un número, se avisa con un mensaje
+  claro en vez de guardar cualquier cosa. Probado con 16 casos distintos,
+  incluyendo el formato exacto que reportó Lucas.
+- Durante la investigación de este bug apareció una alarma aparte: en una
+  prueba, dos billeteras del mismo usuario terminaron con el balance
+  idéntico después de editar solo una. Se investigó a fondo (el código de
+  guardado, la base de datos, y una prueba aislada directa contra el
+  servidor) y se confirmó que **fue una falsa alarma de la propia forma de
+  probar**, no un error real de la plataforma: al repetir la misma prueba
+  dos veces sin reiniciar los datos, la primera vez dejó la primera
+  billetera "en revisión" (que por diseño oculta sus campos editables
+  mientras espera aprobación, para no pisar un cambio a medias), y la
+  segunda prueba, al buscar un campo editable de balance, terminó
+  agarrando por accidente el de la SEGUNDA billetera. Cada billetera se
+  edita de forma completamente independiente; no hay ningún cruce real
+  entre cuentas.
+- Pedido de Lucas, en dos mensajes seguidos: agregar el peso argentino
+  (ARS) "para balance y todos los estilos que tenemos de operación", y
+  que sea "funcional cuando yo escoja cuánto agregar en mi balance". Al
+  revisar, el selector de moneda ARS ya existía para cualquier usuario
+  desde el dashboard (sección 18) — lo que faltaba era en el panel de
+  ADMIN, donde Lucas edita manualmente el balance de cada persona. Pedido
+  final, ya aclarado: mostrar el Balance (y Equity) en DOS columnas —
+  la moneda propia de esa persona, al lado del total en USD — sincronizadas
+  entre sí.
+- Para que el admin sepa en qué moneda mostrarle el balance a cada
+  usuario, ahora el backend recuerda la última moneda que esa persona
+  eligió (antes solo se guardaba en el navegador de cada quien, nunca
+  llegaba al servidor) — nuevo campo `preferredCurrency` en su perfil,
+  actualizado en silencio cada vez que cambia de moneda desde el menú de
+  usuario (`PUT /api/auth/currency`), sin que la persona tenga que hacer
+  nada extra ni notar que pasó.
+- En el panel de admin, al editar la billetera de un usuario que tiene una
+  moneda local distinta de USD, ahora aparecen dos campos adicionales al
+  lado de Balance y Equity — "Balance (ARS)", "Equity (ARS)", etc. según
+  la moneda de esa persona — con la tasa de cambio actual. Escribir en
+  cualquiera de los dos campos (USD o moneda local) recalcula el otro al
+  instante; al guardar, lo que de verdad se manda y se guarda en el
+  servidor es siempre el monto en USD — el balance real de la cuenta
+  nunca deja de ser en dólares, la moneda local es solo una forma más
+  cómoda de leerlo y escribirlo.
+- Verificado de punta a punta con una prueba automatizada: un usuario
+  elige ARS como su moneda → el admin, al abrir esa cuenta, ve
+  correctamente "Balance (ARS)" con la tasa correcta → escribir 1000 en
+  USD actualiza el campo ARS al valor convertido correcto → escribir
+  "2.500.000,50" en el campo ARS (combinando el separador de miles con la
+  conversión de moneda) recalcula el campo USD al valor correcto → al
+  guardar, el monto que de verdad llega al servidor es el equivalente en
+  USD, no el número en ARS. Todo funcionó igual con capturas de pantalla
+  del panel confirmándolo visualmente.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

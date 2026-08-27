@@ -17,6 +17,33 @@
   const PENDING_REFRESH_MS = 15_000;
   let pollTimer = null;
 
+  // Tasas de cambio (mismo endpoint público que usa assets/js/currency.js)
+  // para poder mostrar, al lado del Balance/Equity en USD de cada usuario,
+  // cuánto es eso en SU moneda local (ver setPreferredCurrency en el
+  // backend) — a pedido de Lucas, para no tener que calcularlo a mano. El
+  // backend ya cachea esto por una hora de su lado, así que no hay
+  // problema en refrescarlo seguido acá.
+  const CURRENCY_RATES_TTL_MS = 5 * 60 * 1000;
+  let currencyRatesCache = { USD: 1 };
+  let currencyRatesFetchedAt = 0;
+
+  async function ensureCurrencyRates() {
+    if (Date.now() - currencyRatesFetchedAt < CURRENCY_RATES_TTL_MS) return;
+    try {
+      const fetcher = typeof fetchWithTimeout === 'function' ? fetchWithTimeout : fetch;
+      const res = await fetcher(`${CONFIG.API_BASE_URL}/api/currency/rates`, {}, 8000);
+      const data = await res.json();
+      if (data && data.rates) {
+        currencyRatesCache = data.rates;
+        currencyRatesFetchedAt = Date.now();
+      }
+    } catch (e) {
+      // Sin conexión / API caída: se sigue con lo último que se tenía (o
+      // solo USD si todavía no se pudo cargar nunca) — el campo en la
+      // moneda local simplemente no aparece hasta que se pueda de nuevo.
+    }
+  }
+
   function money(value) {
     const n = Number(value) || 0;
     return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
@@ -26,6 +53,47 @@
     const div = document.createElement('div');
     div.textContent = String(str ?? '');
     return div.innerHTML;
+  }
+
+  // Convierte un monto escrito a mano en cualquier formato razonable a un
+  // número. Antes los campos de Balance/Equity/Monto eran <input
+  // type="number">, que el navegador bloquea apenas se escribe un segundo
+  // punto — así que alguien acostumbrado a escribir plata con separador de
+  // miles (ej. "103.266.83" para $103,266.83, o "103.266,83" al estilo
+  // colombiano) no podía terminar de escribirlo. Ahora esos campos son de
+  // texto libre y esta función interpreta el resultado: el ÚLTIMO punto o
+  // coma que aparece se toma como separador decimal (si le siguen 1 o 2
+  // dígitos), y cualquier punto/coma anterior se descarta por ser
+  // separador de miles. Acepta "103266.83", "103.266,83", "103,266.83" y
+  // "103.266.83" — los cuatro terminan siendo 103266.83. Devuelve NaN si
+  // el texto no se puede interpretar como un número.
+  function parseFlexibleAmount(raw) {
+    if (typeof raw !== 'string') return NaN;
+    const trimmed = raw.trim();
+    if (!trimmed) return NaN;
+
+    const lastDot = trimmed.lastIndexOf('.');
+    const lastComma = trimmed.lastIndexOf(',');
+    const decimalIndex = Math.max(lastDot, lastComma);
+
+    let integerPart = trimmed;
+    let decimalPart = '';
+    if (decimalIndex !== -1) {
+      integerPart = trimmed.slice(0, decimalIndex);
+      decimalPart = trimmed.slice(decimalIndex + 1);
+    }
+    // Si lo que sigue al último separador no son 1-2 dígitos, en realidad
+    // no era un separador decimal (ej. "103.266" completo, sin centavos) —
+    // se trata todo como parte entera.
+    if (!/^\d{1,2}$/.test(decimalPart)) {
+      integerPart = trimmed;
+      decimalPart = '';
+    }
+
+    const cleanInteger = integerPart.replace(/[.,\s]/g, '');
+    if (!/^\d+$/.test(cleanInteger)) return NaN;
+    const numStr = decimalPart ? `${cleanInteger}.${decimalPart}` : cleanInteger;
+    return Number(numStr);
   }
 
   function showToast(message, type = 'info') {
@@ -208,6 +276,7 @@
       // solo en el próximo ciclo de refresco.
     }
     try {
+      await ensureCurrencyRates();
       const users = await Api.adminGetUsers();
       renderUsers(users);
     } catch (err) {
@@ -408,6 +477,18 @@
   }
 
   function renderUserEditPanel(u) {
+    // Si esta persona ya detectó/eligió una moneda local distinta de USD
+    // (ver "Moneda" en su propio dashboard) y ya se pudo cargar una tasa
+    // real para ella, se muestra un campo hermano al lado del Balance/
+    // Equity en USD para poder escribir el monto directamente en su
+    // moneda — a pedido de Lucas, para no tener que hacer la cuenta a
+    // mano. Si todavía no eligió ninguna, o es USD, no se muestra nada
+    // extra (nunca se inventa una moneda que la persona no usa).
+    const localCode = u.preferredCurrency && u.preferredCurrency !== 'USD' && currencyRatesCache[u.preferredCurrency]
+      ? u.preferredCurrency
+      : null;
+    const localRate = localCode ? currencyRatesCache[localCode] : null;
+
     const accountsHtml = u.accounts.length
       ? u.accounts
           .map((a) => {
@@ -431,18 +512,28 @@
                   <div class="pending-item-fields">
                     <div class="field pending-item-field" style="min-width:110px;">
                       <label>Balance (USD)</label>
-                      <input type="number" step="0.01" min="0" data-role="balance" data-account-id="${a.id}" placeholder="${a.balance}" />
+                      <input type="text" inputmode="decimal" data-role="balance" data-account-id="${a.id}" placeholder="${a.balance}" />
                     </div>
+                    ${localCode ? `
+                    <div class="field pending-item-field" style="min-width:130px;">
+                      <label>Balance (${escapeHtml(localCode)})</label>
+                      <input type="text" inputmode="decimal" data-role="balance-local" data-account-id="${a.id}" data-rate="${localRate}" placeholder="${(a.balance * localRate).toFixed(2)}" />
+                    </div>` : ''}
                     <div class="field pending-item-field" style="min-width:110px;">
                       <label>Equity (USD)</label>
-                      <input type="number" step="0.01" min="0" data-role="equity" data-account-id="${a.id}" placeholder="${a.equity}" />
+                      <input type="text" inputmode="decimal" data-role="equity" data-account-id="${a.id}" placeholder="${a.equity}" />
                     </div>
+                    ${localCode ? `
+                    <div class="field pending-item-field" style="min-width:130px;">
+                      <label>Equity (${escapeHtml(localCode)})</label>
+                      <input type="text" inputmode="decimal" data-role="equity-local" data-account-id="${a.id}" data-rate="${localRate}" placeholder="${(a.equity * localRate).toFixed(2)}" />
+                    </div>` : ''}
                     <div class="field pending-item-field" style="min-width:90px;">
                       <label>Apalancamiento</label>
                       <input type="text" data-role="leverage" data-account-id="${a.id}" placeholder="${escapeHtml(a.leverage || '1:100')}" />
                     </div>
                   </div>
-                  <div class="admin-edit-hint">💡 Si solo escribes el Balance, el Equity se ajusta solo al mismo valor (sin ganancia/pérdida flotante). Si quieres dejar un Equity distinto, escríbelo tú mismo en su campo.</div>
+                  <div class="admin-edit-hint">💡 Si solo escribes el Balance, el Equity se ajusta solo al mismo valor (sin ganancia/pérdida flotante). Si quieres dejar un Equity distinto, escríbelo tú mismo en su campo. Puedes escribir el monto como prefieras: 103266.83, 103.266,83 o 103.266.83 — se interpreta igual.${localCode ? ` También puedes escribir directamente en ${escapeHtml(localCode)} (la moneda de ${escapeHtml(u.fullName || u.username)}) — se convierte solo a USD, que es lo que de verdad se guarda.` : ''}</div>
                   <div class="pending-item-actions">
                     <button class="btn btn-primary btn-sm" data-action="save-account" data-account-id="${a.id}">Guardar cambios</button>
                   </div>
@@ -708,18 +799,55 @@
     // de Equity a mano — mismo criterio que aplica el backend al guardar
     // (ver requestAccountEdit en data/store.js), pero mostrado en vivo acá
     // para que Lucas vea el número actualizarse mientras escribe, en vez
-    // de enterarse recién después de guardar.
+    // de enterarse recién después de guardar. Además, si esta persona tiene
+    // una moneda local (ver renderUserEditPanel), el campo en USD y su
+    // hermano en la moneda local se mantienen sincronizados en los dos
+    // sentidos — escribir en cualquiera de los dos actualiza el otro.
     document.querySelectorAll('[data-role="balance"][data-account-id]').forEach((balanceInput) => {
       const accountId = balanceInput.dataset.accountId;
       const equityInput = document.querySelector(`[data-role="equity"][data-account-id="${accountId}"]`);
       if (!equityInput) return;
+      const balanceLocalInput = document.querySelector(`[data-role="balance-local"][data-account-id="${accountId}"]`);
+      const equityLocalInput = document.querySelector(`[data-role="equity-local"][data-account-id="${accountId}"]`);
+      const rate = balanceLocalInput ? Number(balanceLocalInput.dataset.rate) : null;
+
+      const syncLocalFromUsd = (usdInput, localInput) => {
+        if (!localInput || !rate) return;
+        const usd = parseFlexibleAmount(usdInput.value);
+        if (Number.isFinite(usd)) localInput.value = (usd * rate).toFixed(2);
+      };
+
       balanceInput.addEventListener('input', () => {
-        if (equityInput.dataset.touched === '1') return;
-        equityInput.value = balanceInput.value;
+        if (equityInput.dataset.touched !== '1') {
+          equityInput.value = balanceInput.value;
+          syncLocalFromUsd(equityInput, equityLocalInput);
+        }
+        syncLocalFromUsd(balanceInput, balanceLocalInput);
       });
       equityInput.addEventListener('input', () => {
         equityInput.dataset.touched = '1';
+        syncLocalFromUsd(equityInput, equityLocalInput);
       });
+
+      if (balanceLocalInput && rate) {
+        balanceLocalInput.addEventListener('input', () => {
+          const local = parseFlexibleAmount(balanceLocalInput.value);
+          if (!Number.isFinite(local)) return;
+          balanceInput.value = (local / rate).toFixed(2);
+          if (equityInput.dataset.touched !== '1') {
+            equityInput.value = balanceInput.value;
+            syncLocalFromUsd(equityInput, equityLocalInput);
+          }
+        });
+      }
+      if (equityLocalInput && rate) {
+        equityLocalInput.addEventListener('input', () => {
+          const local = parseFlexibleAmount(equityLocalInput.value);
+          if (!Number.isFinite(local)) return;
+          equityInput.dataset.touched = '1';
+          equityInput.value = (local / rate).toFixed(2);
+        });
+      }
     });
   }
 
@@ -729,12 +857,16 @@
     const leverageInput = document.querySelector(`[data-role="leverage"][data-account-id="${accountId}"]`);
 
     const fields = {};
-    if (balanceInput.value.trim() !== '') fields.balance = Number(balanceInput.value);
-    if (equityInput.value.trim() !== '') fields.equity = Number(equityInput.value);
+    if (balanceInput.value.trim() !== '') fields.balance = parseFlexibleAmount(balanceInput.value);
+    if (equityInput.value.trim() !== '') fields.equity = parseFlexibleAmount(equityInput.value);
     if (leverageInput.value.trim() !== '') fields.leverage = leverageInput.value.trim();
 
     if (!Object.keys(fields).length) {
       return showItemError('account', accountId, 'Escribe al menos un valor nuevo antes de guardar');
+    }
+    if ((fields.balance !== undefined && (!Number.isFinite(fields.balance) || fields.balance < 0)) ||
+        (fields.equity !== undefined && (!Number.isFinite(fields.equity) || fields.equity < 0))) {
+      return showItemError('account', accountId, 'No se pudo entender ese monto — revisa que solo tenga números, y como mucho un punto o coma decimal al final (ej. 103266.83 o 103.266,83)');
     }
 
     try {
@@ -872,7 +1004,7 @@
         </div>
         <div class="field pending-item-field" style="min-width:120px;">
           <label>Monto final (USD)</label>
-          <input type="number" step="0.01" min="0.01" data-role="amount" value="${d.requestedAmount}" />
+          <input type="text" inputmode="decimal" data-role="amount" value="${d.requestedAmount}" />
         </div>
       </div>
       <div class="pending-item-actions">
@@ -908,7 +1040,7 @@
 
   async function approveDeposit(id, item) {
     const accountId = Number(item.querySelector('[data-role="account"]').value);
-    const amount = Number(item.querySelector('[data-role="amount"]').value);
+    const amount = parseFlexibleAmount(item.querySelector('[data-role="amount"]').value);
     if (!accountId) return showItemError('deposit', id, 'Selecciona a qué cuenta va este depósito');
     if (!Number.isFinite(amount) || amount <= 0) return showItemError('deposit', id, 'Ingresa un monto válido mayor a 0');
 
@@ -950,7 +1082,7 @@
         </div>
         <div class="field pending-item-field" style="min-width:120px;">
           <label>Monto final (USD)</label>
-          <input type="number" step="0.01" min="0.01" data-role="amount" value="${w.requestedAmount}" />
+          <input type="text" inputmode="decimal" data-role="amount" value="${w.requestedAmount}" />
         </div>
       </div>
       <div class="pending-item-actions">
@@ -986,7 +1118,7 @@
 
   async function approveWithdrawal(id, item) {
     const accountId = Number(item.querySelector('[data-role="account"]').value);
-    const amount = Number(item.querySelector('[data-role="amount"]').value);
+    const amount = parseFlexibleAmount(item.querySelector('[data-role="amount"]').value);
     if (!accountId) return showItemError('withdrawal', id, 'Selecciona de qué cuenta sale este retiro');
     if (!Number.isFinite(amount) || amount <= 0) return showItemError('withdrawal', id, 'Ingresa un monto válido mayor a 0');
 
