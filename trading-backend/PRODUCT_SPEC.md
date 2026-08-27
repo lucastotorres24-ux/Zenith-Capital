@@ -1544,6 +1544,94 @@ cambio** (no solo el símbolo).
   depósitos del dashboard se renombró de "Banco" a "Banco / método" para
   reflejar esto.
 
+## 29. Causa real de la mala conectividad de los gráficos, y por qué la corrección anterior no alcanzaba (agosto 2026)
+
+- Lucas reportó que, incluso después de la corrección anterior (timeout de
+  10s por petición), los gráficos seguían con "mal proceso de carga y
+  display". Investigando más a fondo, la causa real es que CoinGecko, en
+  su plan gratuito (sin llave de API), tiene un límite muy estricto de
+  peticiones por minuto — y esta app lo supera fácilmente: el ticker de
+  precios pregunta cada 5 segundos, el gráfico se refresca cada 60
+  segundos, y cada vez que alguien cambia de activo o de plazo se hacen 2
+  peticiones más. Con más de una pestaña o persona usando el sitio al
+  mismo tiempo, el límite se agota rápido.
+- Encima, el reintento automático que ya existía (3 intentos, 1.5s aparte)
+  estaba empeorando el problema: si CoinGecko ya estaba bloqueando por
+  exceso de peticiones, esos 3 intentos volvían a golpear el mismo límite
+  activo, alargando la falla en vez de resolverla.
+- Se agregó una "pausa" compartida: en cuanto cualquier parte del sitio
+  recibe un aviso de "demasiadas peticiones" de CoinGecko, TODO el sitio
+  deja de intentarle a CoinGecko durante 45 segundos (el ticker, el
+  gráfico, el cambio de activo), y en vez de quedarse cargando sin
+  avisar, muestra de inmediato un mensaje honesto: "CoinGecko alcanzó su
+  límite de peticiones gratuitas por un momento. Esto se resuelve solo en
+  menos de un minuto — no hace falta hacer nada." Esto evita gastar el
+  límite en reintentos inútiles y deja que se libere solo.
+- También se agregó que, cuando la pestaña del navegador está en segundo
+  plano (la persona cambió a otra pestaña o minimizó), el sitio deja de
+  seguir preguntando precios y gráficos — no tiene sentido gastar el
+  límite de peticiones en algo que nadie está mirando. Apenas la persona
+  vuelve a esa pestaña, se actualiza todo al instante.
+- De paso, se corrigió un error donde, si la petición de precios de
+  cripto fallaba (por cualquier motivo, incluyendo lo de arriba), los
+  precios de oro y plata (que vienen de un servicio totalmente aparte)
+  también se descartaban esa vuelta, aunque sí hubieran llegado bien —
+  ahora cada uno se procesa de forma independiente.
+
+## 30. Corrección de un error real en la conversión de moneda para depósitos/retiros (agosto 2026)
+
+- Lucas reportó que, del menú de usuario, "lo único que no sirve es la
+  moneda de depósitos" (el resto — Mi perfil, modo oscuro, cerrar sesión —
+  sí funcionaba). Se probó el selector de moneda en sí y funciona bien;
+  el problema real estaba un paso más adelante, al momento de calcular el
+  monto a enviar.
+- Causa encontrada: cuando la página carga, pide al servidor las tasas de
+  cambio actuales. Si esa petición fallaba o tardaba de más (por ejemplo,
+  durante un arranque en frío del servidor gratuito de Render, que puede
+  tardar 30-60+ segundos), la app se quedaba silenciosamente con "todo
+  vale lo mismo en dólares" para el resto de la sesión — sin avisar nada.
+  Eso significa que alguien podía elegir "COP", escribir "50000" pensando
+  en pesos colombianos, y la app enviaría una solicitud de depósito por
+  $50,000 **dólares** en vez de los ~$12.50 dólares que en realidad
+  corresponden — el selector se veía como si funcionara (la etiqueta
+  cambiaba a "COP"), pero el cálculo de fondo estaba mal.
+- Corrección: (1) esa petición de tasas de cambio ahora tiene un límite de
+  tiempo y reintenta una vez más si falla; (2) más importante, se agregó
+  un candado que **bloquea el envío** del depósito o retiro con un
+  mensaje claro ("Todavía no se cargó la tasa de cambio para {MONEDA}.
+  Espera unos segundos e intenta de nuevo.") si la tasa de esa moneda
+  todavía no llegó — en vez de mandar un monto equivocado sin que nadie
+  se dé cuenta. Esto sigue el mismo principio de honestidad del resto del
+  proyecto: mejor avisar y pedir que se espere unos segundos, que enviar
+  un número que no es el correcto.
+
+## 31. Panel de administrador: primero los usuarios, luego sus pendientes (agosto 2026)
+
+- Lucas señaló que "se desordena mucho todo lo que sucede cuando un
+  usuario hace una operación" y pidió poder ver solo la lista de usuarios
+  y entrar a cada uno para ver y editar sus propias operaciones, en vez
+  de tener todo mezclado en la pantalla principal del admin.
+- Antes, los depósitos, retiros y compras/ventas pendientes de **todos**
+  los usuarios se mostraban en tres listas globales, una debajo de la
+  otra, sin separar por persona — con más de un usuario activo se volvía
+  difícil saber de quién era cada cosa.
+- Ahora la fila de cada usuario en "Usuarios registrados" muestra una
+  etiqueta de aviso ("N pendientes") solo cuando esa persona tiene algo
+  esperando revisión, y la fila se resalta levemente para que salte a la
+  vista. Al presionar "Editar" en un usuario, lo primero que aparece —
+  antes incluso de sus billeteras — es la sección "Pendientes de
+  [nombre]" con únicamente los depósitos, retiros y operaciones de esa
+  persona, cada uno con sus mismos botones de Aprobar/Rechazar/editar
+  monto de siempre.
+- Las tres listas "con todo junto" (de todos los usuarios) se dejaron
+  como respaldo, ahora colapsadas dentro de "Ver todos los pendientes
+  juntos (todos los usuarios, vista de respaldo)" — útil para un vistazo
+  general, pero ya no es lo primero que se ve al entrar al panel.
+- Se verificó con una prueba automatizada que aprobar un depósito desde
+  el panel de un usuario aplica el cambio exactamente una vez (no dos)
+  y que el contador de pendientes de esa persona baja correctamente
+  después.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

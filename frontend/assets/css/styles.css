@@ -1167,6 +1167,65 @@ a.brand:hover {
   letter-spacing: 0.03em;
 }
 
+/* Aviso de "esto necesita revisión" en la tabla de usuarios del admin —
+   un color de atención (no crítico) para que se distinga a simple vista
+   de las insignias/etiquetas normales sin verse como un error. */
+.badge.badge-attention {
+  background: var(--warning-soft);
+  color: #a87005;
+}
+
+/* Fila de un usuario con depósitos/retiros/operaciones pendientes — un
+   tinte muy sutil para que resalte al recorrer la tabla con la vista,
+   sin llegar a verse como una fila de error. */
+tr.has-pending {
+  background: var(--warning-soft);
+}
+tr.has-pending:hover {
+  background: var(--warning-soft);
+}
+
+/* Vista de respaldo "todo junto" del panel de admin — colapsada por
+   defecto para que lo primero que se vea sea solo la tabla de usuarios. */
+.admin-pending-details {
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 4px 16px;
+}
+.admin-pending-details summary {
+  cursor: pointer;
+  padding: 14px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  list-style: none;
+}
+.admin-pending-details summary::-webkit-details-marker { display: none; }
+.admin-pending-details summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.15s ease;
+  color: var(--text-muted);
+}
+.admin-pending-details[open] summary::before {
+  transform: rotate(90deg);
+}
+.admin-pending-details summary:hover {
+  color: var(--text-primary);
+}
+.admin-pending-details[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+.admin-pending-details .section {
+  border: none;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .account-metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;

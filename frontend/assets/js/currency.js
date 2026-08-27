@@ -65,6 +65,17 @@ const Currency = (() => {
     return state.rates[code] || (code === 'USD' ? 1 : null);
   }
 
+  // Si todavía no se pudo cargar una tasa real para la moneda elegida (por
+  // ejemplo, justo después de entrar, mientras el backend recién está
+  // "despertando" en Render y la petición de tasas no ha terminado), NO
+  // hay que convertir en silencio como si la tasa fuera 1:1 — eso mandaría
+  // un monto totalmente distinto al que la persona escribió sin ningún
+  // aviso. Quien llama debe revisar esto antes de confiar en toUsd/toLocal
+  // para un monto que se va a enviar al servidor.
+  function hasRate(code = state.code) {
+    return Boolean(rateFor(code));
+  }
+
   // USD -> moneda seleccionada (para mostrar)
   function toLocal(usdAmount, code = state.code) {
     const n = Number(usdAmount) || 0;
@@ -89,6 +100,30 @@ const Currency = (() => {
     }
   }
 
+  // El backend (Render, plan gratuito) puede tardar hasta un minuto en
+  // "despertar" si llevaba un rato dormido — un fetch normal sin límite de
+  // tiempo se queda esperando esa primera respuesta lenta, y si de
+  // casualidad falla justo esa vez, esta función nunca reintenta: la
+  // sesión entera se queda con tasas de repuesto (USD:1) sin que nadie se
+  // entere, lo que después se ve como "elegir la moneda no hace nada". Con
+  // un timeout corto + un reintento después de una pausa, una demora de
+  // arranque en frío ya no deja a la persona sin tasas reales para el
+  // resto de su sesión.
+  async function fetchRatesWithRetry() {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const fetcher = typeof fetchWithTimeout === 'function' ? fetchWithTimeout : fetch;
+        const res = await fetcher(`${CONFIG.API_BASE_URL}/api/currency/rates`, {}, 8000);
+        const data = await res.json();
+        if (data && data.rates) return data.rates;
+      } catch (e) {
+        // sigue al reintento (o se rinde si ya era el último intento)
+      }
+      if (attempt === 1) await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    return null;
+  }
+
   async function init() {
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { /* modo privado, etc. */ }
@@ -97,7 +132,8 @@ const Currency = (() => {
       state.code = saved;
     } else {
       try {
-        const res = await fetch(`${CONFIG.API_BASE_URL}/api/currency/detect`);
+        const fetcher = typeof fetchWithTimeout === 'function' ? fetchWithTimeout : fetch;
+        const res = await fetcher(`${CONFIG.API_BASE_URL}/api/currency/detect`, {}, 8000);
         const data = await res.json();
         if (data && SUPPORTED.includes(data.currency)) {
           state.code = data.currency;
@@ -108,17 +144,16 @@ const Currency = (() => {
       }
     }
 
-    try {
-      const res = await fetch(`${CONFIG.API_BASE_URL}/api/currency/rates`);
-      const data = await res.json();
-      if (data && data.rates) state.rates = data.rates;
-    } catch (e) {
-      // Sin conexión -> se queda con USD:1 (todo se ve igual, sin romper nada).
-    }
+    const rates = await fetchRatesWithRetry();
+    if (rates) state.rates = rates;
+    // Si de verdad no se pudo — ni al primer intento ni al reintento — se
+    // queda con USD:1 nada más. hasRate() deja que quien vaya a mandar un
+    // monto convertido al backend sepa que esa moneda no tiene una tasa
+    // real todavía, en vez de asumir 1:1 en silencio.
 
     state.ready = true;
     document.dispatchEvent(new CustomEvent('zenith-currency-ready', { detail: { code: state.code } }));
   }
 
-  return { init, getCode, setCode, isReady, toLocal, toUsd, format, labelFor, SUPPORTED };
+  return { init, getCode, setCode, isReady, hasRate, toLocal, toUsd, format, labelFor, SUPPORTED };
 })();

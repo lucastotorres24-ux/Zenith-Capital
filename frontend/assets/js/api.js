@@ -17,13 +17,55 @@ const ADMIN_TOKEN_KEY = 'zenith_admin_token';
 // mostrar "sin conexión", etc.) — se usa en todos los fetch directos a
 // CoinGecko/gold-api en trading-panel.js y dashboard.js.
 async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  if (isRateLimited(url)) {
+    // Ya sabemos que este servicio nos acaba de rechazar por exceso de
+    // peticiones (ver más abajo) — ni siquiera intentamos otra vez hasta
+    // que pase el tiempo de espera. Reintentar de inmediato contra un 429
+    // no sirve de nada (la ventana de límite no se libera más rápido por
+    // insistir) y solo suma otra petición contada en contra nuestra.
+    throw new Error('RATE_LIMITED');
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    if (res.status === 429) markRateLimited(url);
+    return res;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// CoinGecko (y en menor medida gold-api.com) son APIs gratuitas con límite
+// de peticiones por minuto — bastante fácil de superar entre el ticker de
+// precios (cada pocos segundos), el historial de cada cambio de activo/
+// plazo, y varias pestañas o personas usando la plataforma al mismo
+// tiempo. Cuando eso pasa, la API responde 429 ("Too Many Requests") y
+// NINGÚN reintento inmediato ayuda — todo lo contrario, insistir rápido
+// mantiene la ventana de límite ocupada y hace que tarde más en
+// liberarse. Este estado compartido (una sola vez por página, no por cada
+// fetch) hace que TODO el código que usa fetchWithTimeout — ticker de
+// precios, historial de gráficos, precio único para liquidar una opción —
+// se entere y deje de insistir contra ese servicio por un rato, en vez de
+// que cada parte del código siga golpeando la API por su cuenta sin
+// saber que ya está bloqueada.
+const RATE_LIMIT_COOLDOWN_MS = 45000;
+const rateLimitUntil = { coingecko: 0, goldapi: 0 };
+
+function rateLimitKeyFor(url) {
+  if (url.includes('coingecko.com')) return 'coingecko';
+  if (url.includes('gold-api.com')) return 'goldapi';
+  return null;
+}
+
+function isRateLimited(url) {
+  const key = rateLimitKeyFor(url);
+  return key ? Date.now() < rateLimitUntil[key] : false;
+}
+
+function markRateLimited(url) {
+  const key = rateLimitKeyFor(url);
+  if (key) rateLimitUntil[key] = Date.now() + RATE_LIMIT_COOLDOWN_MS;
 }
 
 function triggerBlobDownload(blob, filename) {

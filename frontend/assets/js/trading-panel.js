@@ -171,9 +171,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   updatePayoutPreview();
 
-  setInterval(pollPrices, PRICE_POLL_MS);
-  setInterval(() => loadChartData(selectedAsset, selectedTimeframe), CHART_REFRESH_MS);
+  // Si la pestaña está en segundo plano (minimizada, en otra pestaña) no
+  // hay nadie mirando el precio en vivo — seguir pidiéndolo igual solo
+  // gasta parte del límite de peticiones gratuitas de CoinGecko sin que
+  // nadie lo note, y es una de las causas de que después, cuando sí se
+  // está usando la página, aparezca "conectividad" mala. Al volver a la
+  // pestaña se refresca de inmediato en vez de esperar al siguiente ciclo.
+  setInterval(() => { if (!document.hidden) pollPrices(); }, PRICE_POLL_MS);
+  setInterval(() => { if (!document.hidden) loadChartData(selectedAsset, selectedTimeframe); }, CHART_REFRESH_MS);
   setInterval(tickActiveOptions, 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      pollPrices();
+      loadChartData(selectedAsset, selectedTimeframe);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------
@@ -1008,6 +1020,7 @@ async function loadChartData(assetId, timeframeKey) {
         fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${assetId}/ohlc?vs_currency=usd&days=${timeframe.days}`, {}, 9000),
         fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${assetId}/market_chart?vs_currency=usd&days=${timeframe.days}`, {}, 9000),
       ]);
+      if (ohlcRes.status === 429 || volRes.status === 429) throw new Error('RATE_LIMITED');
       if (!ohlcRes.ok) throw new Error('No se pudo obtener el histórico');
       const rawOhlc = await ohlcRes.json();
       const rawVolumes = volRes.ok ? ((await volRes.json()).total_volumes || []) : [];
@@ -1075,6 +1088,26 @@ async function loadChartData(assetId, timeframeKey) {
       return; // éxito — no hace falta reintentar
     } catch (err) {
       if (myToken !== chartLoadToken) return; // el usuario ya se fue a otro activo, no vale la pena seguir
+
+      // CoinGecko sin API key tiene un límite de peticiones por minuto muy
+      // fácil de alcanzar (el ticker de precios + el historial de cada
+      // cambio de activo, multiplicado por cualquiera que tenga la página
+      // abierta). Si ya nos rechazó por eso, insistir cada 1.5s NO ayuda —
+      // la ventana de límite no se libera más rápido por reintentar rápido,
+      // y cada intento extra cuenta en contra nuestra. En ese caso se corta
+      // de una vez (en vez de gastar los 3 intentos) y se avisa con un
+      // mensaje distinto que dice la verdad: no es que el sitio esté roto,
+      // es que hay que esperar un momento a que se libere el límite — el
+      // refresco automático de cada 60s (mayor al tiempo de espera) lo va a
+      // reintentar solo, sin que la persona tenga que hacer nada.
+      if (err.message === 'RATE_LIMITED') {
+        showChartLoading(false);
+        if (!cached) {
+          showChartError(true, 'CoinGecko alcanzó su límite de peticiones gratuitas por un momento. Esto se resuelve solo en menos de un minuto — no hace falta hacer nada.');
+        }
+        return;
+      }
+
       if (attempt < MAX_ATTEMPTS) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         continue;
@@ -1084,7 +1117,7 @@ async function loadChartData(assetId, timeframeKey) {
       // (el precio en vivo y las operaciones siguen funcionando igual,
       // porque no dependen del histórico del gráfico).
       showChartLoading(false);
-      if (!cached) showChartError(true);
+      if (!cached) showChartError(true, 'No se pudo cargar el historial de este activo. Revisa tu conexión e intenta de nuevo.');
     }
   }
 }
@@ -1142,10 +1175,18 @@ async function pollPrices() {
   const metalIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'metal');
 
   try {
-    const [cryptoData, metalPrices] = await Promise.all([
+    // Promise.allSettled en vez de Promise.all: antes, si CoinGecko fallaba
+    // (por ejemplo por el límite de peticiones), TODO el ciclo se
+    // descartaba de una — incluyendo los precios de metales que sí habían
+    // llegado bien desde gold-api.com, un servicio totalmente aparte que
+    // no tiene por qué verse afectado por un problema de CoinGecko. Ahora
+    // cada uno se aplica de forma independiente.
+    const [cryptoResult, metalResult] = await Promise.allSettled([
       fetchCryptoPrices(cryptoIds),
       Promise.all(metalIds.map((id) => fetchMetalPrice(id))),
     ]);
+    const cryptoData = cryptoResult.status === 'fulfilled' ? cryptoResult.value : {};
+    const metalPrices = metalResult.status === 'fulfilled' ? metalResult.value : metalIds.map(() => null);
 
     cryptoIds.forEach((id) => {
       const entry = cryptoData[id];

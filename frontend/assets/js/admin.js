@@ -183,6 +183,11 @@
       ...data.withdrawals.map((w) => w.userId),
     ]);
 
+    pendingDepositsCache = data.deposits;
+    pendingWithdrawalsCache = data.withdrawals;
+    pendingTradesCache = data.trades;
+    pendingAccountsByUserCache = accountsByUser;
+
     renderPendingDeposits(data.deposits, accountsByUser);
     renderPendingWithdrawals(data.withdrawals, accountsByUser);
     renderPendingTrades(data.trades);
@@ -379,6 +384,17 @@
   const expandedUserIds = new Set();
   let usersCache = [];
 
+  // Depósitos/retiros/operaciones pendientes de TODOS los usuarios, tal
+  // como llegan del servidor — se guardan acá (además de dibujarse en las
+  // listas globales de abajo) para poder mostrar, dentro del panel de cada
+  // usuario, solo lo que le corresponde a él. Así Lucas puede entrar a un
+  // usuario puntual y ver/editar sus propias operaciones pendientes, en
+  // vez de tener que buscarlo a ojo entre las de todos los demás.
+  let pendingDepositsCache = [];
+  let pendingWithdrawalsCache = [];
+  let pendingTradesCache = [];
+  let pendingAccountsByUserCache = {};
+
   function pendingEditNote(pendingAdminEdit, describeFn) {
     if (!pendingAdminEdit) return '';
     const when = fieldDate(pendingAdminEdit.applyAt);
@@ -484,11 +500,30 @@
       : '<option value="">Sin billeteras disponibles</option>';
     const assetOptionsForNew = ADMIN_ASSET_OPTIONS.map((a) => `<option value="${a.asset}|${a.symbol}">${escapeHtml(a.name)}</option>`).join('');
 
+    // Operaciones pendientes de ESTE usuario nada más (filtradas de las
+    // colas globales) — es lo primero que se ve al entrar a un usuario,
+    // porque suele ser lo más urgente: algo que está esperando revisión.
+    const ownDeposits = pendingDepositsCache.filter((d) => d.userId === u.id);
+    const ownWithdrawals = pendingWithdrawalsCache.filter((w) => w.userId === u.id);
+    const ownTrades = pendingTradesCache.filter((t) => t.userId === u.id);
+    const ownAccounts = pendingAccountsByUserCache[u.id] || u.accounts;
+    const totalPending = ownDeposits.length + ownWithdrawals.length + ownTrades.length;
+
+    const pendingHtml = totalPending === 0
+      ? '<div class="subtitle">Este usuario no tiene depósitos, retiros ni operaciones pendientes en este momento.</div>'
+      : `
+        ${ownDeposits.map((d) => `<div class="pending-item" data-pending-deposit="${d.id}">${depositItemInnerHtml(d, ownAccounts)}</div>`).join('')}
+        ${ownWithdrawals.map((w) => `<div class="pending-item" data-pending-withdrawal="${w.id}">${withdrawalItemInnerHtml(w, ownAccounts)}</div>`).join('')}
+        ${ownTrades.map((t) => `<div class="pending-item" data-pending-trade="${t.id}">${tradeItemInnerHtml(t)}</div>`).join('')}
+      `;
+
     return `
       <tr class="user-edit-row" data-user-edit-row="${u.id}">
         <td colspan="7">
           <div class="user-edit-panel">
-            <h4>Billeteras de ${escapeHtml(u.fullName || u.username)}</h4>
+            <h4>Pendientes de ${escapeHtml(u.fullName || u.username)} ${totalPending ? `<span class="badge">${totalPending}</span>` : ''}</h4>
+            ${pendingHtml}
+            <h4 style="margin-top:16px;">Billeteras de ${escapeHtml(u.fullName || u.username)}</h4>
             ${accountsHtml}
             <h4 style="margin-top:16px;">Posiciones (holdings)</h4>
             ${holdingsHtml}
@@ -582,8 +617,19 @@
           ? `<span class="badge-pill rank-${u.rank.key}">${escapeHtml(RANK_LABELS[u.rank.key] || u.rank.label)}</span>`
           : '<span class="badge-pill">Sin insignia</span>';
         const isExpanded = expandedUserIds.has(u.id);
+        // Cuántos depósitos/retiros/operaciones de ESTE usuario están
+        // esperando revisión — se muestra acá para poder detectar de un
+        // vistazo a quién hay que entrar a revisar, sin tener que abrir
+        // usuario por usuario.
+        const pendingCount =
+          pendingDepositsCache.filter((d) => d.userId === u.id).length +
+          pendingWithdrawalsCache.filter((w) => w.userId === u.id).length +
+          pendingTradesCache.filter((t) => t.userId === u.id).length;
+        const pendingBadge = pendingCount
+          ? `<span class="badge badge-attention" title="${pendingCount} operación(es) esperando revisión" style="margin-right:8px;">${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}</span>`
+          : '';
         const row = `
-          <tr>
+          <tr${pendingCount ? ' class="has-pending"' : ''}>
             <td>
               <strong>${escapeHtml(u.fullName || u.username)}</strong><br />
               <span style="color:var(--text-muted); font-size:12px;">@${escapeHtml(u.username)}</span>
@@ -596,7 +642,7 @@
             <td>${accountsText}</td>
             <td>${u.documentsCount}</td>
             <td>${u.createdAt ? fieldDate(u.createdAt) : '—'}</td>
-            <td><button class="btn btn-ghost btn-sm" data-action="toggle-user-edit" data-user-id="${u.id}">${isExpanded ? 'Ocultar' : 'Editar'}</button></td>
+            <td>${pendingBadge}<button class="btn btn-ghost btn-sm" data-action="toggle-user-edit" data-user-id="${u.id}">${isExpanded ? 'Ocultar' : 'Editar'}</button></td>
           </tr>
         `;
         return isExpanded ? row + renderUserEditPanel(u) : row;
@@ -630,6 +676,32 @@
     });
     document.querySelectorAll('[data-action="create-holding"]').forEach((btn) => {
       btn.addEventListener('click', () => createHolding(Number(btn.dataset.userId)));
+    });
+
+    // Botones de aprobar/rechazar depósitos/retiros/operaciones DENTRO del
+    // panel de un usuario (ver renderUserEditPanel). Se escopan a
+    // ".user-edit-panel" a propósito: las mismas listas globales de abajo
+    // (todos los usuarios juntos) reusan el mismo HTML interno pero ya
+    // conectan sus propios botones aparte al crearlos — sin este alcance,
+    // un depósito que aparece en ambos lados terminaría aprobándose dos
+    // veces con un solo clic.
+    document.querySelectorAll('.user-edit-panel [data-action="approve-deposit"]').forEach((btn) => {
+      btn.addEventListener('click', () => approveDeposit(Number(btn.dataset.depositId), btn.closest('.pending-item')));
+    });
+    document.querySelectorAll('.user-edit-panel [data-action="reject-deposit"]').forEach((btn) => {
+      btn.addEventListener('click', () => rejectDeposit(Number(btn.dataset.depositId)));
+    });
+    document.querySelectorAll('.user-edit-panel [data-action="approve-withdrawal"]').forEach((btn) => {
+      btn.addEventListener('click', () => approveWithdrawal(Number(btn.dataset.withdrawalId), btn.closest('.pending-item')));
+    });
+    document.querySelectorAll('.user-edit-panel [data-action="reject-withdrawal"]').forEach((btn) => {
+      btn.addEventListener('click', () => rejectWithdrawal(Number(btn.dataset.withdrawalId)));
+    });
+    document.querySelectorAll('.user-edit-panel [data-action="approve-trade"]').forEach((btn) => {
+      btn.addEventListener('click', () => approveTrade(Number(btn.dataset.tradeId), btn.closest('.pending-item')));
+    });
+    document.querySelectorAll('.user-edit-panel [data-action="reject-trade"]').forEach((btn) => {
+      btn.addEventListener('click', () => rejectTrade(Number(btn.dataset.tradeId)));
     });
 
     // Equity "sigue" al Balance mientras el admin no haya tocado el campo
@@ -780,6 +852,37 @@
 
   // ---- Depósitos ----
 
+  // Contenido interno de un depósito pendiente — se usa tanto en la lista
+  // global (todos los usuarios juntos) como dentro del panel de cada
+  // usuario (ver renderUserEditPanel), para no mantener dos versiones del
+  // mismo formulario que se puedan desincronizar.
+  function depositItemInnerHtml(d, accounts) {
+    return `
+      <div class="pending-item-top">
+        <span class="pending-item-user">${escapeHtml(d.username)}</span>
+        <span>${fieldDate(d.createdAt)}</span>
+      </div>
+      <div class="pending-item-meta">
+        Solicitó depositar <strong>${money(d.requestedAmount)}</strong> · ${escapeHtml(d.bank)} · Contacto: ${escapeHtml(d.contact)}
+      </div>
+      <div class="pending-item-fields">
+        <div class="field pending-item-field">
+          <label>Cuenta destino</label>
+          <select data-role="account">${accountOptions(accounts)}</select>
+        </div>
+        <div class="field pending-item-field" style="min-width:120px;">
+          <label>Monto final (USD)</label>
+          <input type="number" step="0.01" min="0.01" data-role="amount" value="${d.requestedAmount}" />
+        </div>
+      </div>
+      <div class="pending-item-actions">
+        <button class="btn btn-primary btn-sm" data-action="approve-deposit" data-deposit-id="${d.id}">Aprobar</button>
+        <button class="btn btn-danger btn-sm" data-action="reject-deposit" data-deposit-id="${d.id}">Rechazar</button>
+      </div>
+      ${itemErrorHtml('deposit', d.id)}
+    `;
+  }
+
   function renderPendingDeposits(deposits, accountsByUser) {
     const empty = document.getElementById('pending-deposits-empty');
     const list = document.getElementById('pending-deposits-list');
@@ -795,34 +898,11 @@
       const accounts = accountsByUser[d.userId] || [];
       const item = document.createElement('div');
       item.className = 'pending-item';
-      item.innerHTML = `
-        <div class="pending-item-top">
-          <span class="pending-item-user">${escapeHtml(d.username)}</span>
-          <span>${fieldDate(d.createdAt)}</span>
-        </div>
-        <div class="pending-item-meta">
-          Solicitó depositar <strong>${money(d.requestedAmount)}</strong> · ${escapeHtml(d.bank)} · Contacto: ${escapeHtml(d.contact)}
-        </div>
-        <div class="pending-item-fields">
-          <div class="field pending-item-field">
-            <label>Cuenta destino</label>
-            <select data-role="account">${accountOptions(accounts)}</select>
-          </div>
-          <div class="field pending-item-field" style="min-width:120px;">
-            <label>Monto final (USD)</label>
-            <input type="number" step="0.01" min="0.01" data-role="amount" value="${d.requestedAmount}" />
-          </div>
-        </div>
-        <div class="pending-item-actions">
-          <button class="btn btn-primary btn-sm" data-action="approve">Aprobar</button>
-          <button class="btn btn-danger btn-sm" data-action="reject">Rechazar</button>
-        </div>
-        ${itemErrorHtml('deposit', d.id)}
-      `;
+      item.innerHTML = depositItemInnerHtml(d, accounts);
       list.appendChild(item);
 
-      item.querySelector('[data-action="approve"]').addEventListener('click', () => approveDeposit(d.id, item));
-      item.querySelector('[data-action="reject"]').addEventListener('click', () => rejectDeposit(d.id));
+      item.querySelector('[data-action="approve-deposit"]').addEventListener('click', () => approveDeposit(d.id, item));
+      item.querySelector('[data-action="reject-deposit"]').addEventListener('click', () => rejectDeposit(d.id));
     });
   }
 
@@ -854,6 +934,33 @@
 
   // ---- Retiros ----
 
+  function withdrawalItemInnerHtml(w, accounts) {
+    return `
+      <div class="pending-item-top">
+        <span class="pending-item-user">${escapeHtml(w.username)}</span>
+        <span>${fieldDate(w.createdAt)}</span>
+      </div>
+      <div class="pending-item-meta">
+        Solicitó retirar <strong>${money(w.requestedAmount)}</strong> · ${escapeHtml(w.method)} · Contacto: ${escapeHtml(w.contact || '—')}
+      </div>
+      <div class="pending-item-fields">
+        <div class="field pending-item-field">
+          <label>Cuenta origen</label>
+          <select data-role="account">${accountOptions(accounts)}</select>
+        </div>
+        <div class="field pending-item-field" style="min-width:120px;">
+          <label>Monto final (USD)</label>
+          <input type="number" step="0.01" min="0.01" data-role="amount" value="${w.requestedAmount}" />
+        </div>
+      </div>
+      <div class="pending-item-actions">
+        <button class="btn btn-primary btn-sm" data-action="approve-withdrawal" data-withdrawal-id="${w.id}">Aprobar</button>
+        <button class="btn btn-danger btn-sm" data-action="reject-withdrawal" data-withdrawal-id="${w.id}">Rechazar</button>
+      </div>
+      ${itemErrorHtml('withdrawal', w.id)}
+    `;
+  }
+
   function renderPendingWithdrawals(withdrawals, accountsByUser) {
     const empty = document.getElementById('pending-withdrawals-empty');
     const list = document.getElementById('pending-withdrawals-list');
@@ -869,34 +976,11 @@
       const accounts = accountsByUser[w.userId] || [];
       const item = document.createElement('div');
       item.className = 'pending-item';
-      item.innerHTML = `
-        <div class="pending-item-top">
-          <span class="pending-item-user">${escapeHtml(w.username)}</span>
-          <span>${fieldDate(w.createdAt)}</span>
-        </div>
-        <div class="pending-item-meta">
-          Solicitó retirar <strong>${money(w.requestedAmount)}</strong> · ${escapeHtml(w.method)} · Contacto: ${escapeHtml(w.contact || '—')}
-        </div>
-        <div class="pending-item-fields">
-          <div class="field pending-item-field">
-            <label>Cuenta origen</label>
-            <select data-role="account">${accountOptions(accounts)}</select>
-          </div>
-          <div class="field pending-item-field" style="min-width:120px;">
-            <label>Monto final (USD)</label>
-            <input type="number" step="0.01" min="0.01" data-role="amount" value="${w.requestedAmount}" />
-          </div>
-        </div>
-        <div class="pending-item-actions">
-          <button class="btn btn-primary btn-sm" data-action="approve">Aprobar</button>
-          <button class="btn btn-danger btn-sm" data-action="reject">Rechazar</button>
-        </div>
-        ${itemErrorHtml('withdrawal', w.id)}
-      `;
+      item.innerHTML = withdrawalItemInnerHtml(w, accounts);
       list.appendChild(item);
 
-      item.querySelector('[data-action="approve"]').addEventListener('click', () => approveWithdrawal(w.id, item));
-      item.querySelector('[data-action="reject"]').addEventListener('click', () => rejectWithdrawal(w.id));
+      item.querySelector('[data-action="approve-withdrawal"]').addEventListener('click', () => approveWithdrawal(w.id, item));
+      item.querySelector('[data-action="reject-withdrawal"]').addEventListener('click', () => rejectWithdrawal(w.id));
     });
   }
 
@@ -928,6 +1012,34 @@
 
   // ---- Compras / ventas ----
 
+  function tradeItemInnerHtml(t) {
+    return `
+      <div class="pending-item-top">
+        <span class="pending-item-user">${escapeHtml(t.username)}</span>
+        <span>${fieldDate(t.createdAt)}</span>
+      </div>
+      <div class="pending-item-meta">
+        ${t.side === 'compra' ? 'Compra' : 'Venta'} solicitada: <strong>${t.requestedQuantity} ${escapeHtml(t.symbol)}</strong> a ${money(t.requestedPrice)} c/u
+        ${t.source === 'auto' ? '<span class="auto-trade-tag" title="Generada automáticamente por el motor de auto-inversión Diamante/Platino">🤖 Automática</span>' : ''}
+      </div>
+      <div class="pending-item-fields">
+        <div class="field pending-item-field" style="min-width:120px;">
+          <label>Cantidad final</label>
+          <input type="number" step="any" min="0.00000001" data-role="quantity" value="${t.requestedQuantity}" />
+        </div>
+        <div class="field pending-item-field" style="min-width:120px;">
+          <label>Precio final (USD)</label>
+          <input type="number" step="0.0001" min="0.0001" data-role="price" value="${t.requestedPrice}" />
+        </div>
+      </div>
+      <div class="pending-item-actions">
+        <button class="btn btn-primary btn-sm" data-action="approve-trade" data-trade-id="${t.id}">Aprobar</button>
+        <button class="btn btn-danger btn-sm" data-action="reject-trade" data-trade-id="${t.id}">Rechazar</button>
+      </div>
+      ${itemErrorHtml('trade', t.id)}
+    `;
+  }
+
   function renderPendingTrades(trades) {
     const empty = document.getElementById('pending-trades-empty');
     const list = document.getElementById('pending-trades-list');
@@ -942,35 +1054,11 @@
     trades.forEach((t) => {
       const item = document.createElement('div');
       item.className = 'pending-item';
-      item.innerHTML = `
-        <div class="pending-item-top">
-          <span class="pending-item-user">${escapeHtml(t.username)}</span>
-          <span>${fieldDate(t.createdAt)}</span>
-        </div>
-        <div class="pending-item-meta">
-          ${t.side === 'compra' ? 'Compra' : 'Venta'} solicitada: <strong>${t.requestedQuantity} ${escapeHtml(t.symbol)}</strong> a ${money(t.requestedPrice)} c/u
-          ${t.source === 'auto' ? '<span class="auto-trade-tag" title="Generada automáticamente por el motor de auto-inversión Diamante/Platino">🤖 Automática</span>' : ''}
-        </div>
-        <div class="pending-item-fields">
-          <div class="field pending-item-field" style="min-width:120px;">
-            <label>Cantidad final</label>
-            <input type="number" step="any" min="0.00000001" data-role="quantity" value="${t.requestedQuantity}" />
-          </div>
-          <div class="field pending-item-field" style="min-width:120px;">
-            <label>Precio final (USD)</label>
-            <input type="number" step="0.0001" min="0.0001" data-role="price" value="${t.requestedPrice}" />
-          </div>
-        </div>
-        <div class="pending-item-actions">
-          <button class="btn btn-primary btn-sm" data-action="approve">Aprobar</button>
-          <button class="btn btn-danger btn-sm" data-action="reject">Rechazar</button>
-        </div>
-        ${itemErrorHtml('trade', t.id)}
-      `;
+      item.innerHTML = tradeItemInnerHtml(t);
       list.appendChild(item);
 
-      item.querySelector('[data-action="approve"]').addEventListener('click', () => approveTrade(t.id, item));
-      item.querySelector('[data-action="reject"]').addEventListener('click', () => rejectTrade(t.id));
+      item.querySelector('[data-action="approve-trade"]').addEventListener('click', () => approveTrade(t.id, item));
+      item.querySelector('[data-action="reject-trade"]').addEventListener('click', () => rejectTrade(t.id));
     });
   }
 

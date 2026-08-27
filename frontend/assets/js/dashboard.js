@@ -106,7 +106,14 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTrades();
   loadTicker();
   loadZenithTicker();
-  setInterval(loadTicker, TICKER_REFRESH_MS);
+  // El ticker de cripto pide a CoinGecko, que tiene un límite de
+  // peticiones gratuitas por minuto — si la pestaña del dashboard queda
+  // abierta en segundo plano (otra pestaña, minimizada) sin que nadie la
+  // mire, seguir pidiendo cada 15s solo gasta parte de ese límite sin
+  // necesidad, lo cual después se nota como mala "conectividad" cuando sí
+  // se está usando la página (acá o en el panel de trading). Se retoma de
+  // inmediato al volver a la pestaña.
+  setInterval(() => { if (!document.hidden) loadTicker(); }, TICKER_REFRESH_MS);
   setInterval(loadZenithTicker, TICKER_REFRESH_MS);
   setInterval(() => {
     loadAccounts();
@@ -115,6 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadHoldings();
     loadTrades();
   }, OPERATIONAL_REFRESH_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) loadTicker();
+  });
 });
 
 // ---------------------------------------------------------------------
@@ -728,6 +738,17 @@ async function handleDepositSubmit(event) {
     return;
   }
 
+  // Si la moneda elegida no es USD y todavía no llegó su tasa de cambio
+  // real (por ejemplo, justo después de entrar mientras el backend recién
+  // está arrancando), NO se debe mandar el monto tal cual escrito como si
+  // fuera 1:1 — eso registraría un depósito por un valor completamente
+  // distinto al que la persona quiso, sin ningún aviso. Mejor avisar y
+  // dejar que reintente en un momento.
+  if (typeof Currency !== 'undefined' && !Currency.hasRate()) {
+    showDepositModalError(`Todavía no se cargó la tasa de cambio para ${Currency.getCode()}. Espera unos segundos e intenta de nuevo.`);
+    return;
+  }
+
   // Lo que la persona escribió está en la moneda que eligió (por ejemplo
   // ARS o PEN) — el backend siempre guarda montos en USD, así que lo
   // convertimos con la tasa de cambio en vivo antes de enviarlo.
@@ -886,6 +907,13 @@ async function handleWithdrawSubmit(event) {
   const rawAmount = document.getElementById('withdraw-amount').value;
   if (!isValidMoneyAmount(rawAmount)) {
     showWithdrawModalError('Por favor ingresa un valor válido.');
+    return;
+  }
+
+  // Misma protección que en el depósito: sin una tasa real todavía, no se
+  // manda el número tal cual como si fuera 1:1.
+  if (typeof Currency !== 'undefined' && !Currency.hasRate()) {
+    showWithdrawModalError(`Todavía no se cargó la tasa de cambio para ${Currency.getCode()}. Espera unos segundos e intenta de nuevo.`);
     return;
   }
 

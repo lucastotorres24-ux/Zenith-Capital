@@ -169,56 +169,68 @@
     </div>
   </section>
 
-  <section class="section" style="margin-bottom: 24px;">
-    <div class="section-header">
-      <div>
-        <h2>Depósitos pendientes</h2>
-        <div class="subtitle">Elige a qué billetera del usuario va y el monto final antes de aprobar.</div>
-      </div>
-      <span class="badge" id="deposits-pending-count">0</span>
-    </div>
-    <div class="section-body">
-      <div class="empty-state" id="pending-deposits-empty">
-        <div class="icon">💵</div>
-        <div>No hay depósitos pendientes por el momento.</div>
-      </div>
-      <div id="pending-deposits-list" class="pending-list"></div>
-    </div>
-  </section>
+  <!-- Antes estas tres colas mezclaban las operaciones de TODOS los
+       usuarios juntas, lo que se volvía difícil de seguir apenas hay más
+       de un par de usuarios activos — a pedido de Lucas, ahora lo primero
+       que se ve es solo la tabla de usuarios (con un aviso de "N
+       pendientes" en cada fila que lo necesite); entrar a un usuario
+       muestra únicamente SUS operaciones pendientes, arriba de todo en su
+       panel. Esta vista con todo junto se deja como respaldo, colapsada,
+       para cuando de verdad haga falta ver todo a la vez. -->
+  <details class="admin-pending-details">
+    <summary>Ver todos los pendientes juntos (todos los usuarios, vista de respaldo)</summary>
 
-  <section class="section" style="margin-bottom: 24px;">
-    <div class="section-header">
-      <div>
-        <h2>Retiros pendientes</h2>
-        <div class="subtitle">Elige de qué billetera del usuario sale y el monto final antes de aprobar.</div>
+    <section class="section" style="margin-bottom: 24px; margin-top: 16px;">
+      <div class="section-header">
+        <div>
+          <h2>Depósitos pendientes</h2>
+          <div class="subtitle">Elige a qué billetera del usuario va y el monto final antes de aprobar.</div>
+        </div>
+        <span class="badge" id="deposits-pending-count">0</span>
       </div>
-      <span class="badge" id="withdrawals-pending-count">0</span>
-    </div>
-    <div class="section-body">
-      <div class="empty-state" id="pending-withdrawals-empty">
-        <div class="icon">🏦</div>
-        <div>No hay retiros pendientes por el momento.</div>
+      <div class="section-body">
+        <div class="empty-state" id="pending-deposits-empty">
+          <div class="icon">💵</div>
+          <div>No hay depósitos pendientes por el momento.</div>
+        </div>
+        <div id="pending-deposits-list" class="pending-list"></div>
       </div>
-      <div id="pending-withdrawals-list" class="pending-list"></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section">
-    <div class="section-header">
-      <div>
-        <h2>Compras y ventas pendientes</h2>
-        <div class="subtitle">Puedes ajustar la cantidad y/o el precio final antes de aprobar.</div>
+    <section class="section" style="margin-bottom: 24px;">
+      <div class="section-header">
+        <div>
+          <h2>Retiros pendientes</h2>
+          <div class="subtitle">Elige de qué billetera del usuario sale y el monto final antes de aprobar.</div>
+        </div>
+        <span class="badge" id="withdrawals-pending-count">0</span>
       </div>
-      <span class="badge" id="trades-pending-count">0</span>
-    </div>
-    <div class="section-body">
-      <div class="empty-state" id="pending-trades-empty">
-        <div class="icon">📈</div>
-        <div>No hay compras/ventas pendientes por el momento.</div>
+      <div class="section-body">
+        <div class="empty-state" id="pending-withdrawals-empty">
+          <div class="icon">🏦</div>
+          <div>No hay retiros pendientes por el momento.</div>
+        </div>
+        <div id="pending-withdrawals-list" class="pending-list"></div>
       </div>
-      <div id="pending-trades-list" class="pending-list"></div>
-    </div>
-  </section>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Compras y ventas pendientes</h2>
+          <div class="subtitle">Puedes ajustar la cantidad y/o el precio final antes de aprobar.</div>
+        </div>
+        <span class="badge" id="trades-pending-count">0</span>
+      </div>
+      <div class="section-body">
+        <div class="empty-state" id="pending-trades-empty">
+          <div class="icon">📈</div>
+          <div>No hay compras/ventas pendientes por el momento.</div>
+        </div>
+        <div id="pending-trades-list" class="pending-list"></div>
+      </div>
+    </section>
+  </details>
 
   <section class="section" style="margin-top: 24px;">
     <div class="section-header">
