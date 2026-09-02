@@ -52,7 +52,7 @@ const CRYPTO_META = {
 // una API gratuita, sin llave, con precio real y en vivo (no de
 // criptomonedas). Esta API no ofrece historial gratuito, así que el
 // gráfico de velas de un metal se construye 100% en vivo, en tiempo real,
-// a partir del momento en que se abre (ver loadMetalChartData más abajo) —
+// a partir del momento en que se abre (ver loadSlowChartData más abajo) —
 // nunca se inventa historial que no exista.
 const METAL_META = {
   'metal-xau': { symbol: 'XAU', name: 'Oro', metalSymbol: 'XAU' },
@@ -62,10 +62,61 @@ const METAL_META = {
   'metal-cu': { symbol: 'XCU', name: 'Cobre', metalSymbol: 'HG' },
 };
 
+// Petróleo (WTI/Brent) e Índices bursátiles (vía ETF espejo) — precio real
+// desde Alpha Vantage, a través del backend (ver data/markets.js y
+// routes/market.js). El plan gratis de Alpha Vantage solo da el cierre del
+// día anterior (no en vivo minuto a minuto) y tiene un límite muy bajo de
+// peticiones diarias, por eso el backend cachea el resultado varias horas
+// — acá simplemente se pide lo que el backend ya tenga guardado.
+const OIL_META = {
+  'oil-wti': { symbol: 'WTI', name: 'Petróleo WTI', avKey: 'wti' },
+  'oil-brent': { symbol: 'BRENT', name: 'Petróleo Brent', avKey: 'brent' },
+};
+
+const INDEX_META = {
+  'idx-sp500': { symbol: 'SPX', name: 'S&P 500', avKey: 'sp500' },
+  'idx-dji': { symbol: 'DJI', name: 'Dow Jones', avKey: 'dowjones' },
+  'idx-ndx': { symbol: 'NDX', name: 'Nasdaq 100', avKey: 'nasdaq100' },
+};
+
+// Divisas (Forex) — no hace falta ninguna fuente nueva: se reutilizan las
+// mismas tasas de cambio reales que ya usa toda la plataforma para mostrar
+// montos convertidos (ver data/currency.js), actualizadas cada hora. Como
+// esa tabla siempre tiene USD de base (rates.USD === 1), el precio de
+// cualquier par "BASE/QUOTE" es simplemente rates[QUOTE] / rates[BASE].
+const FOREX_META = {
+  'fx-eurusd': { symbol: 'EUR/USD', name: 'Euro / Dólar estadounidense', base: 'EUR', quote: 'USD' },
+  'fx-gbpusd': { symbol: 'GBP/USD', name: 'Libra esterlina / Dólar estadounidense', base: 'GBP', quote: 'USD' },
+  'fx-usdjpy': { symbol: 'USD/JPY', name: 'Dólar estadounidense / Yen japonés', base: 'USD', quote: 'JPY' },
+  'fx-usdmxn': { symbol: 'USD/MXN', name: 'Dólar estadounidense / Peso mexicano', base: 'USD', quote: 'MXN' },
+  'fx-usdcop': { symbol: 'USD/COP', name: 'Dólar estadounidense / Peso colombiano', base: 'USD', quote: 'COP' },
+  'fx-usdars': { symbol: 'USD/ARS', name: 'Dólar estadounidense / Peso argentino', base: 'USD', quote: 'ARS' },
+  'fx-usdbrl': { symbol: 'USD/BRL', name: 'Dólar estadounidense / Real brasileño', base: 'USD', quote: 'BRL' },
+};
+
 const PANEL_META = {};
 Object.keys(CRYPTO_META).forEach((id) => { PANEL_META[id] = { ...CRYPTO_META[id], category: 'crypto' }; });
 Object.keys(METAL_META).forEach((id) => { PANEL_META[id] = { ...METAL_META[id], category: 'metal' }; });
-const PANEL_ASSETS = [...Object.keys(CRYPTO_META), ...Object.keys(METAL_META)];
+Object.keys(OIL_META).forEach((id) => { PANEL_META[id] = { ...OIL_META[id], category: 'oil' }; });
+Object.keys(INDEX_META).forEach((id) => { PANEL_META[id] = { ...INDEX_META[id], category: 'index' }; });
+Object.keys(FOREX_META).forEach((id) => { PANEL_META[id] = { ...FOREX_META[id], category: 'forex' }; });
+const PANEL_ASSETS = [
+  ...Object.keys(CRYPTO_META),
+  ...Object.keys(METAL_META),
+  ...Object.keys(OIL_META),
+  ...Object.keys(INDEX_META),
+  ...Object.keys(FOREX_META),
+];
+
+// Categorías que no tienen historial de velas gratuito disponible: el
+// gráfico se construye 100% en vivo, con precio real, acumulando desde el
+// momento en que se abre (igual que ya se hacía solo para metales). La
+// diferencia entre ellas es únicamente qué tan seguido llega un precio
+// nuevo — ver SLOW_CATEGORY_NOTES más abajo.
+const SLOW_CATEGORIES = ['metal', 'oil', 'index', 'forex'];
+function isSlowCategory(category) {
+  return SLOW_CATEGORIES.includes(category);
+}
 
 // Símbolo de Binance para cada criptomoneda (ver market-ws.js) — se usa
 // para pedir historial de velas y precio en vivo por WebSocket, mucho más
@@ -184,8 +235,8 @@ let barDurationSeconds = 1800; // se recalcula con cada carga según el tamaño 
 // Para metales: como no hay historial gratuito, las velas se acumulan en
 // vivo aquí (por activo) mientras la pestaña esté abierta, para que si
 // cambias a otro activo y vuelves, no se pierda lo ya construido.
-let metalCandleCache = {};
-const METAL_BAR_SECONDS = 30;
+let slowCandleCache = {};
+const SLOW_BAR_SECONDS = 30;
 
 // Cuenta fallas seguidas al pedir el precio en vivo de cada metal a
 // gold-api.com, para poder distinguir "todavía no ha llegado el primer
@@ -194,8 +245,8 @@ const METAL_BAR_SECONDS = 30;
 // caso antes fallaba en silencio total y dejaba el gráfico en blanco para
 // siempre, sin ningún aviso, lo cual se ve exactamente como un error de la
 // página aunque en realidad sea un problema de conexión con gold-api.com.
-let metalFailStreak = {};
-const METAL_FAIL_THRESHOLD = 3; // ~15 segundos de fallas seguidas (un ciclo de precio son 5s)
+let slowFailStreak = {};
+const SLOW_FAIL_THRESHOLD = 3; // ~15 segundos de fallas seguidas (un ciclo de precio son 5s)
 
 // Caché del histórico real ya traído por activo+plazo, para que volver a
 // un activo que ya se visitó en esta sesión se vea al instante (en vez de
@@ -224,18 +275,31 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('panel-amount').addEventListener('input', updatePayoutPreview);
   document.getElementById('panel-account').addEventListener('change', updateAccountAvailability);
 
-  initChart();
   renderToolbar();
   updateToolbarForCategory();
   wireFullscreen();
 
+  // Todo esto no depende de la librería externa de gráficos (lightweight-
+  // charts, ver <head>) — arranca de inmediato, sin esperar a que esa
+  // pieza externa esté lista. El precio en vivo y el balance de cuentas
+  // son lo primero que alguien necesita ver al entrar, y no tienen por
+  // qué depender de qué tan rápido responda un CDN aparte.
   loadAccounts();
   loadOptionsHistory();
-  loadChartData(selectedAsset, selectedTimeframe);
   pollPrices();
   wireLiveTickerStream();
-
   updatePayoutPreview();
+
+  // El gráfico se inicializa apenas la librería esté lista (se pidió en
+  // paralelo desde que se abrió la página, así que normalmente ya lo está
+  // para este punto) y recién ahí se pide su primer historial — si en vez
+  // de esto se pidiera de una, antes de que la librería llegue, esa
+  // primera carga se perdería en silencio (loadChartData no hace nada si
+  // todavía no hay dónde dibujar) y había que esperar hasta el refresco
+  // automático de los 60s para ver algo.
+  initChart().then(() => {
+    if (priceSeries) loadChartData(selectedAsset, selectedTimeframe);
+  });
 
   // Si la pestaña está en segundo plano (minimizada, en otra pestaña) no
   // hay nadie mirando el precio en vivo — seguir pidiéndolo igual solo
@@ -313,7 +377,7 @@ async function loadAccounts() {
     const select = document.getElementById('panel-account');
     const previousValue = select.value;
     select.innerHTML = accountsCache
-      .map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || a.accountNumber)} (${escapeHtml(a.accountNumber)}) · ${money(a.balance)}</option>`)
+      .map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || 'Mi Billetera')} · ${money(a.balance)}</option>`)
       .join('');
     if (previousValue && accountsCache.some((a) => String(a.id) === previousValue)) {
       select.value = previousValue;
@@ -533,8 +597,16 @@ function createPriceSeriesForType(type) {
   });
 }
 
-function initChart() {
+async function initChart() {
   const container = document.getElementById('panel-chart-container');
+
+  // La librería se pide en paralelo desde <head> (ver window.chartsReady)
+  // — se espera acá a que esté lista (o a que se rinda a los 6s) en vez
+  // de revisar solo una vez de inmediato, que era lo que pasaba antes con
+  // el <script> bloqueante: entrar al panel justo en el instante en que
+  // todavía no había terminado de llegar mostraba "gráfico no disponible"
+  // para siempre, aunque en realidad solo faltaban unos milisegundos más.
+  if (window.chartsReady) await window.chartsReady;
 
   if (!window.LightweightCharts) {
     container.innerHTML = '<div class="empty-state"><div>No se pudo cargar el gráfico (librería no disponible). Los precios en vivo y las operaciones siguen funcionando normalmente.</div></div>';
@@ -679,20 +751,31 @@ function renderToolbar() {
   });
 }
 
-// Los metales (gold-api.com) no tienen historial gratuito ni volumen real,
-// así que al elegir uno se deshabilitan los plazos (no hay nada distinto
-// que traer) y el indicador de Volumen (no hay dato real que mostrar), y
-// la nota bajo el gráfico explica por qué. Nada de esto se inventa: se
-// deja claro qué es real y qué todavía no está disponible.
-function updateToolbarForCategory() {
-  const isMetal = PANEL_META[selectedAsset]?.category === 'metal';
+// Los metales (gold-api.com), el petróleo e índices (Alpha Vantage) y el
+// Forex (tasas de cambio propias) no tienen historial de velas gratuito ni
+// volumen real, así que al elegir uno de estos se deshabilitan los plazos
+// (no hay nada distinto que traer) y el indicador de Volumen (no hay dato
+// real que mostrar), y la nota bajo el gráfico explica por qué — con un
+// texto propio por categoría, porque cada una llega con una frecuencia de
+// actualización distinta. Nada de esto se inventa: se deja claro qué es
+// real y qué todavía no está disponible.
+const SLOW_CATEGORY_NOTES = {
+  metal: 'Precio real y en vivo (gold-api.com) — este activo no tiene historial de velas gratuito disponible, así que el gráfico se construye en tiempo real desde el momento en que lo abres, y sigue acumulando mientras tengas la página abierta. El volumen no está disponible para metales. El precio de entrada/salida de cada operación sí es 100% real.',
+  oil: 'Precio real de cierre del día anterior (Alpha Vantage, plan gratis) — se actualiza cada varias horas, no segundo a segundo, así que el gráfico se construye con lo que llega desde que abres este activo. El precio de entrada/salida de cada operación sí es 100% real, tomado del último dato disponible.',
+  index: 'Precio real vía ETF espejo (Alpha Vantage, plan gratis) — ver el nombre del fondo en la lista de instrumentos. Se actualiza cada varias horas, no segundo a segundo. El precio de entrada/salida de cada operación sí es 100% real, tomado del último dato disponible.',
+  forex: 'Tasa de cambio real (la misma que usa toda la plataforma para conversión de montos), actualizada cada hora — no segundo a segundo. El gráfico se construye con lo que llega desde que abres este par. El precio de entrada/salida de cada operación sí es 100% real, tomado del último dato disponible.',
+};
 
-  document.querySelectorAll('#timeframe-tabs button').forEach((b) => { b.disabled = isMetal; });
+function updateToolbarForCategory() {
+  const category = PANEL_META[selectedAsset]?.category;
+  const isSlow = isSlowCategory(category);
+
+  document.querySelectorAll('#timeframe-tabs button').forEach((b) => { b.disabled = isSlow; });
 
   const volBtn = document.querySelector('#indicator-toggles button[data-indicator="volume"]');
   if (volBtn) {
-    volBtn.disabled = isMetal;
-    if (isMetal && indicatorsOn.volume) {
+    volBtn.disabled = isSlow;
+    if (isSlow && indicatorsOn.volume) {
       indicatorsOn.volume = false;
       volBtn.classList.remove('is-active');
       if (volumeSeries) volumeSeries.applyOptions({ visible: false });
@@ -701,8 +784,8 @@ function updateToolbarForCategory() {
 
   const note = document.getElementById('panel-chart-note');
   if (note) {
-    note.textContent = isMetal
-      ? 'Precio real y en vivo (gold-api.com) — este activo no tiene historial de velas gratuito disponible, así que el gráfico se construye en tiempo real desde el momento en que lo abres, y sigue acumulando mientras tengas la página abierta. El volumen no está disponible para metales. El precio de entrada/salida de cada operación sí es 100% real, igual que en criptomonedas.'
+    note.textContent = isSlow
+      ? SLOW_CATEGORY_NOTES[category]
       : 'Velas con datos históricos reales de CoinGecko (puede tener algunos minutos u horas de rezago respecto al segundo exacto). La vela más reciente se actualiza en vivo con cada precio nuevo — no es una simulación aleatoria, se mueve con el precio real del mercado. El precio de entrada/salida de cada operación se toma del precio en vivo mostrado arriba a la derecha.';
   }
 }
@@ -887,10 +970,10 @@ function wireFullscreen() {
 // Acumula una vela en vivo para un metal en su caché propia (independiente
 // de cuál esté seleccionado en pantalla), para que el historial construido
 // en vivo no se pierda al cambiar de activo y volver.
-function accumulateMetalCandle(assetId, price) {
+function accumulateSlowCandle(assetId, price) {
   if (typeof price !== 'number') return;
-  if (!metalCandleCache[assetId]) metalCandleCache[assetId] = { candles: [], barDurationSeconds: METAL_BAR_SECONDS };
-  const entry = metalCandleCache[assetId];
+  if (!slowCandleCache[assetId]) slowCandleCache[assetId] = { candles: [], barDurationSeconds: SLOW_BAR_SECONDS };
+  const entry = slowCandleCache[assetId];
   const nowSec = Math.floor(Date.now() / 1000);
   const last = entry.candles[entry.candles.length - 1];
 
@@ -910,11 +993,11 @@ function updateLiveCandle(assetId, price) {
   if (typeof price !== 'number') return;
   const meta = PANEL_META[assetId];
 
-  if (meta && meta.category === 'metal') {
-    accumulateMetalCandle(assetId, price);
+  if (meta && isSlowCategory(meta.category)) {
+    accumulateSlowCandle(assetId, price);
     if (assetId !== selectedAsset) return; // sigue acumulando en segundo plano, pero no hay nada que dibujar
-    rawCandles = metalCandleCache[assetId].candles;
-    barDurationSeconds = metalCandleCache[assetId].barDurationSeconds;
+    rawCandles = slowCandleCache[assetId].candles;
+    barDurationSeconds = slowCandleCache[assetId].barDurationSeconds;
   } else {
     if (assetId !== selectedAsset || !rawCandles.length) return;
     const last = rawCandles[rawCandles.length - 1];
@@ -1010,20 +1093,28 @@ function renderActiveCandles() {
 // explicación (lo cual se puede confundir fácilmente con "esto está roto"),
 // se muestra el mismo aviso de "cargando" que usan las criptomonedas, con
 // un texto propio, hasta que llegue el primer precio real.
-function loadMetalChartData(assetId) {
+function loadSlowChartData(assetId) {
   if (!priceSeries) return;
-  if (!metalCandleCache[assetId]) metalCandleCache[assetId] = { candles: [], barDurationSeconds: METAL_BAR_SECONDS };
+  if (!slowCandleCache[assetId]) slowCandleCache[assetId] = { candles: [], barDurationSeconds: SLOW_BAR_SECONDS };
 
-  rawCandles = metalCandleCache[assetId].candles;
-  barDurationSeconds = metalCandleCache[assetId].barDurationSeconds;
+  rawCandles = slowCandleCache[assetId].candles;
+  barDurationSeconds = slowCandleCache[assetId].barDurationSeconds;
   renderActiveCandles();
-  updateMetalConnectionState();
+  updateSlowConnectionState();
 }
 
-function updateMetalConnectionState() {
-  if (PANEL_META[selectedAsset]?.category !== 'metal') return;
-  const hasData = (metalCandleCache[selectedAsset]?.candles.length || 0) > 0;
-  const failing = (metalFailStreak[selectedAsset] || 0) >= METAL_FAIL_THRESHOLD;
+const SLOW_CONNECTION_FAIL_TEXT = {
+  metal: 'No se pudo conectar con el precio en vivo de este metal (gold-api.com). Revisa tu conexión e intenta de nuevo.',
+  oil: 'No se pudo obtener el precio del petróleo en este momento. Revisa tu conexión e intenta de nuevo.',
+  index: 'No se pudo obtener el precio de este índice en este momento. Revisa tu conexión e intenta de nuevo.',
+  forex: 'No se pudo obtener la tasa de cambio de este par en este momento. Revisa tu conexión e intenta de nuevo.',
+};
+
+function updateSlowConnectionState() {
+  const category = PANEL_META[selectedAsset]?.category;
+  if (!isSlowCategory(category)) return;
+  const hasData = (slowCandleCache[selectedAsset]?.candles.length || 0) > 0;
+  const failing = (slowFailStreak[selectedAsset] || 0) >= SLOW_FAIL_THRESHOLD;
 
   if (hasData) {
     showChartLoading(false);
@@ -1032,7 +1123,7 @@ function updateMetalConnectionState() {
   }
   if (failing) {
     showChartLoading(false);
-    showChartError(true, 'No se pudo conectar con el precio en vivo de este metal (gold-api.com). Revisa tu conexión e intenta de nuevo.');
+    showChartError(true, SLOW_CONNECTION_FAIL_TEXT[category] || 'No se pudo conectar con el precio en vivo de este activo. Revisa tu conexión e intenta de nuevo.');
   } else {
     showChartError(false);
     showChartLoading(true, 'Conectando con el precio en vivo…');
@@ -1046,10 +1137,10 @@ function updateMetalConnectionState() {
 // el más reciente en el momento en que responde.
 async function loadChartData(assetId, timeframeKey) {
   if (!priceSeries) return;
-  if (PANEL_META[assetId]?.category === 'metal') {
+  if (isSlowCategory(PANEL_META[assetId]?.category)) {
     chartLoadToken += 1; // invalida cualquier carga de cripto que siga en el aire
-    showChartLoading(false); // los metales no usan el overlay: nunca hay pedido de red que esperar
-    loadMetalChartData(assetId);
+    showChartLoading(false); // estas categorías no usan el overlay: nunca hay pedido de red que esperar
+    loadSlowChartData(assetId);
     return;
   }
 
@@ -1230,11 +1321,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
       showChartError(false);
-      if (PANEL_META[selectedAsset]?.category === 'metal') {
-        // Los metales no tienen un "historial" que recargar — lo que hace
-        // falta es un intento nuevo de precio en vivo ya mismo, en vez de
-        // esperar hasta el próximo ciclo de 5 segundos.
-        metalFailStreak[selectedAsset] = 0;
+      if (isSlowCategory(PANEL_META[selectedAsset]?.category)) {
+        // Estas categorías no tienen un "historial" que recargar — lo que
+        // hace falta es un intento nuevo de precio en vivo ya mismo, en vez
+        // de esperar hasta el próximo ciclo.
+        slowFailStreak[selectedAsset] = 0;
         showChartLoading(true, 'Conectando con el precio en vivo…');
         pollPrices();
       } else {
@@ -1268,7 +1359,7 @@ function handleLiveTick(data) {
   updatePriceDisplay();
   updateLivePriceLine();
   updateInstrumentPrices();
-  if (PANEL_META[id]?.category !== 'metal') updateLiveCandle(id, currentPrices[id]);
+  if (!isSlowCategory(PANEL_META[id]?.category)) updateLiveCandle(id, currentPrices[id]);
 }
 
 function wireLiveTickerStream() {
@@ -1312,17 +1403,75 @@ async function fetchMetalPrice(id) {
     if (!res.ok) throw new Error('status ' + res.status);
     const data = await res.json();
     if (typeof data.price !== 'number') throw new Error('precio inválido');
-    metalFailStreak[id] = 0;
+    slowFailStreak[id] = 0;
     return data.price;
   } catch {
-    metalFailStreak[id] = (metalFailStreak[id] || 0) + 1;
+    slowFailStreak[id] = (slowFailStreak[id] || 0) + 1;
     return null;
+  }
+}
+
+// Petróleo e Índices vienen del backend (Alpha Vantage cacheado, ver
+// data/markets.js) en un solo pedido para todos — a diferencia de los
+// metales, no hace falta un pedido por activo.
+async function fetchOilPrices() {
+  try {
+    const data = await Api.getOilPrices();
+    const map = {};
+    (data.assets || []).forEach((a) => { if (typeof a.price === 'number') map[a.key] = a.price; });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+async function fetchIndexPrices() {
+  try {
+    const data = await Api.getIndexPrices();
+    const map = {};
+    const changeMap = {};
+    (data.assets || []).forEach((a) => {
+      if (typeof a.price === 'number') map[a.key] = a.price;
+      if (typeof a.changePercent === 'number') changeMap[a.key] = a.changePercent;
+    });
+    return { map, changeMap };
+  } catch {
+    return { map: {}, changeMap: {} };
+  }
+}
+
+// Forex reutiliza las tasas de cambio reales de toda la plataforma (ver
+// data/currency.js) — no hay ninguna fuente nueva que pedir.
+async function fetchForexRates() {
+  try {
+    const data = await Api.getCurrencyRates();
+    return data.rates || null;
+  } catch {
+    return null;
+  }
+}
+
+// Aplica un precio ya resuelto (petróleo/índices/Forex) a currentPrices,
+// llevando la cuenta de fallas seguidas igual que fetchMetalPrice — así
+// updateSlowConnectionState puede distinguir "todavía no llegó el primer
+// precio" de "de verdad no se puede conectar" para estas categorías también.
+function applyRefDataPrice(id, price, change) {
+  if (typeof price === 'number' && Number.isFinite(price)) {
+    previousPrices[id] = currentPrices[id];
+    currentPrices[id] = price;
+    if (typeof change === 'number') dayChangePercents[id] = change;
+    slowFailStreak[id] = 0;
+  } else {
+    slowFailStreak[id] = (slowFailStreak[id] || 0) + 1;
   }
 }
 
 async function pollPrices() {
   const cryptoIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'crypto');
   const metalIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'metal');
+  const oilIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'oil');
+  const indexIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'index');
+  const forexIds = PANEL_ASSETS.filter((id) => PANEL_META[id].category === 'forex');
 
   try {
     // Promise.allSettled en vez de Promise.all: antes, si CoinGecko fallaba
@@ -1331,12 +1480,18 @@ async function pollPrices() {
     // llegado bien desde gold-api.com, un servicio totalmente aparte que
     // no tiene por qué verse afectado por un problema de CoinGecko. Ahora
     // cada uno se aplica de forma independiente.
-    const [cryptoResult, metalResult] = await Promise.allSettled([
+    const [cryptoResult, metalResult, oilResult, indexResult, forexResult] = await Promise.allSettled([
       fetchCryptoPrices(cryptoIds),
       Promise.all(metalIds.map((id) => fetchMetalPrice(id))),
+      fetchOilPrices(),
+      fetchIndexPrices(),
+      fetchForexRates(),
     ]);
     const cryptoData = cryptoResult.status === 'fulfilled' ? cryptoResult.value : {};
     const metalPrices = metalResult.status === 'fulfilled' ? metalResult.value : metalIds.map(() => null);
+    const oilPriceMap = oilResult.status === 'fulfilled' ? oilResult.value : {};
+    const indexData = indexResult.status === 'fulfilled' ? indexResult.value : { map: {}, changeMap: {} };
+    const forexRates = forexResult.status === 'fulfilled' ? forexResult.value : null;
 
     cryptoIds.forEach((id) => {
       const entry = cryptoData[id];
@@ -1355,20 +1510,39 @@ async function pollPrices() {
       // encabezado muestran "—" en vez de inventar un porcentaje).
     });
 
+    oilIds.forEach((id) => applyRefDataPrice(id, oilPriceMap[PANEL_META[id].avKey]));
+
+    indexIds.forEach((id) => {
+      const avKey = PANEL_META[id].avKey;
+      applyRefDataPrice(id, indexData.map[avKey], indexData.changeMap[avKey]);
+    });
+
+    forexIds.forEach((id) => {
+      if (!forexRates) return applyRefDataPrice(id, null);
+      const meta = PANEL_META[id];
+      const baseRate = meta.base === 'USD' ? 1 : forexRates[meta.base];
+      const quoteRate = meta.quote === 'USD' ? 1 : forexRates[meta.quote];
+      const price = typeof baseRate === 'number' && baseRate && typeof quoteRate === 'number'
+        ? quoteRate / baseRate
+        : null;
+      applyRefDataPrice(id, price);
+    });
+
     updatePriceDisplay();
     updateLivePriceLine();
     updateInstrumentPrices();
 
-    // Los metales acumulan su vela en vivo siempre, esté o no seleccionado
-    // ese activo en pantalla en este momento (así no se pierde tiempo si
-    // el usuario cambia a un metal más tarde en la sesión).
-    metalIds.forEach((id) => updateLiveCandle(id, currentPrices[id]));
-    if (PANEL_META[selectedAsset]?.category !== 'metal') {
+    // Estas categorías acumulan su vela en vivo siempre, esté o no
+    // seleccionado ese activo en pantalla en este momento (así no se pierde
+    // tiempo si el usuario cambia a uno de ellos más tarde en la sesión).
+    [...metalIds, ...oilIds, ...indexIds, ...forexIds].forEach((id) => updateLiveCandle(id, currentPrices[id]));
+    if (!isSlowCategory(PANEL_META[selectedAsset]?.category)) {
       updateLiveCandle(selectedAsset, currentPrices[selectedAsset]);
     }
-    // Revisa si el metal seleccionado (si hay uno) sigue "conectando", ya
-    // se conectó, o de plano no se pudo conectar tras varios intentos.
-    updateMetalConnectionState();
+    // Revisa si el activo seleccionado (si es de alguna de estas
+    // categorías) sigue "conectando", ya se conectó, o de plano no se pudo
+    // conectar tras varios intentos.
+    updateSlowConnectionState();
   } catch (err) {
     // Silencioso: se reintenta en el próximo ciclo.
   }
@@ -1564,6 +1738,12 @@ async function resolveOptionNow(option) {
 async function fetchSinglePrice(assetId) {
   const meta = PANEL_META[assetId];
   if (meta && meta.category === 'metal') return fetchMetalPrice(assetId);
+  // Petróleo, índices y Forex se refrescan en lote cada ciclo de pollPrices()
+  // (ver más arriba) — para liquidar una operación alcanza con el último
+  // precio real ya conocido, en vez de pedirlo de nuevo por separado.
+  if (meta && (meta.category === 'oil' || meta.category === 'index' || meta.category === 'forex')) {
+    return typeof currentPrices[assetId] === 'number' ? currentPrices[assetId] : null;
+  }
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assetId}&vs_currencies=usd`;
     const res = await fetchWithTimeout(url, {}, 8000);

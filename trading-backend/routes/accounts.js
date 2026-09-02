@@ -29,6 +29,17 @@ function sanitizeWalletColor(color) {
   return WALLET_COLORS.includes(color) ? color : DEFAULT_WALLET_COLOR;
 }
 
+// Antes el usuario escribía su propio "número de billetera" (ej. EX-10004) a
+// mano en el formulario. Desde agosto 2026 eso ya no se le pide — la
+// billetera se identifica solo por su nombre (walletName). Este número se
+// sigue generando y guardando por dentro (por si algún reporte interno lo
+// necesita), pero nunca se le muestra al usuario ni se le pide que lo
+// escriba.
+function generateAccountNumber() {
+  const suffix = crypto.randomInt(10000, 99999);
+  return `EX-${suffix}`;
+}
+
 // Genera el "enlace" de la billetera: un identificador único y aleatorio con
 // formato de link, para que se sienta como la dirección de una billetera de
 // verdad. Es solo un identificador de referencia dentro de Zenith Capital —
@@ -64,23 +75,37 @@ router.get('/:id', (req, res) => {
 // (PUT /api/admin/accounts/:id/edit, protegido con ADMIN_CODE), normalmente
 // después de aprobar un depósito.
 router.post('/', (req, res) => {
-  const { accountNumber, accountType, currency, leverage, walletName, walletColor } = req.body;
+  const { currency, leverage, walletName, walletColor } = req.body;
 
-  if (!accountNumber || !accountType || !currency) {
+  if (!currency) {
     return res.status(400).json({
-      error: 'accountNumber, accountType y currency son requeridos',
+      error: 'currency es requerida',
+    });
+  }
+
+  const cleanName = sanitizeWalletName(walletName);
+
+  // Evita que dos billeteras del mismo usuario terminen con el mismo nombre
+  // — ahora que ya no se muestra un número de billetera para distinguirlas,
+  // dos billeteras llamadas igual serían imposibles de diferenciar en la
+  // vista del usuario.
+  const yaExiste = getAccountsByUser(req.user.id).some(
+    (a) => sanitizeWalletName(a.walletName).toLowerCase() === cleanName.toLowerCase()
+  );
+  if (yaExiste) {
+    return res.status(400).json({
+      error: 'Ya tienes una billetera con ese nombre. Elige otro nombre.',
     });
   }
 
   const newAccount = createAccount({
     userId: req.user.id,
-    accountNumber,
-    accountType,
+    accountNumber: generateAccountNumber(),
     currency,
     balance: 0,
     equity: 0,
     leverage: leverage || '1:100',
-    walletName: sanitizeWalletName(walletName),
+    walletName: cleanName,
     walletColor: sanitizeWalletColor(walletColor),
     walletLink: generateWalletLink(),
   });
@@ -104,13 +129,25 @@ router.post('/', (req, res) => {
 // cambio, no se puede cambiar: es un identificador fijo que se genera una
 // sola vez al crear la billetera, igual que un número de cuenta real.
 router.put('/:id', (req, res) => {
-  const { accountType, currency, leverage, walletName, walletColor } = req.body;
+  const { currency, leverage, walletName, walletColor } = req.body;
 
   const fields = {};
-  if (accountType !== undefined) fields.accountType = accountType;
   if (currency !== undefined) fields.currency = currency;
   if (leverage !== undefined) fields.leverage = leverage;
-  if (walletName !== undefined) fields.walletName = sanitizeWalletName(walletName);
+  if (walletName !== undefined) {
+    const cleanName = sanitizeWalletName(walletName);
+    const yaExiste = getAccountsByUser(req.user.id).some(
+      (a) =>
+        a.id !== Number(req.params.id) &&
+        sanitizeWalletName(a.walletName).toLowerCase() === cleanName.toLowerCase()
+    );
+    if (yaExiste) {
+      return res.status(400).json({
+        error: 'Ya tienes una billetera con ese nombre. Elige otro nombre.',
+      });
+    }
+    fields.walletName = cleanName;
+  }
   if (walletColor !== undefined) fields.walletColor = sanitizeWalletColor(walletColor);
 
   const updated = updateAccount(Number(req.params.id), req.user.id, fields);

@@ -29,6 +29,16 @@ const MarketWS = (() => {
   const STREAM_URL_BASE = 'wss://stream.binance.com:9443/stream?streams=';
   const CONNECT_TIMEOUT_MS = 4000;
   const REQUEST_TIMEOUT_MS = 6000;
+  // Si una conexión nunca logra abrirse (red que bloquea WebSocket,
+  // Binance con un problema pasajero, etc.), antes se dejaba de intentar
+  // Binance para siempre en esa visita a la página — así que un solo
+  // tropiezo justo al entrar (por ejemplo, una wifi lenta un instante)
+  // condenaba TODA la sesión al camino lento de respaldo (CoinGecko, con
+  // su límite de peticiones), exactamente el problema que se quería
+  // resolver. Ahora, en vez de "roto para siempre", se espera este tiempo
+  // y se vuelve a intentar solo — así el sitio se auto-repara apenas la
+  // red se estabiliza, sin que la persona tenga que recargar la página.
+  const RETRY_COOLDOWN_MS = 15_000;
 
   // -----------------------------------------------------------------
   // Socket "API" (pedido → respuesta), usado para el historial de velas.
@@ -37,14 +47,11 @@ const MarketWS = (() => {
   let apiConnectPromise = null;
   const apiPending = new Map();
   let apiSeq = 0;
-  // Una vez que falla la conexión, no se vuelve a intentar en esta sesión
-  // de la página — reintentar en cada carga de gráfico solo agregaría una
-  // espera extra (el timeout de conexión) antes de caer al respaldo, sin
-  // ninguna posibilidad real de que el resultado sea distinto.
-  let apiBroken = false;
+  let apiBrokenUntil = 0; // 0 = nunca falló (o ya se puede reintentar)
 
   function connectApi() {
-    if (apiBroken) return Promise.reject(new Error('WS_UNAVAILABLE'));
+    const now = Date.now();
+    if (apiBrokenUntil && now < apiBrokenUntil) return Promise.reject(new Error('WS_UNAVAILABLE'));
     if (apiConnectPromise) return apiConnectPromise;
 
     apiConnectPromise = new Promise((resolve, reject) => {
@@ -52,7 +59,8 @@ const MarketWS = (() => {
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        apiBroken = true;
+        apiBrokenUntil = Date.now() + RETRY_COOLDOWN_MS;
+        apiConnectPromise = null;
         reject(new Error('WS_CONNECT_TIMEOUT'));
       }, CONNECT_TIMEOUT_MS);
 
@@ -61,7 +69,8 @@ const MarketWS = (() => {
         ws = new WebSocket(WS_API_URL);
       } catch (err) {
         clearTimeout(timer);
-        apiBroken = true;
+        apiBrokenUntil = Date.now() + RETRY_COOLDOWN_MS;
+        apiConnectPromise = null;
         reject(err);
         return;
       }
@@ -91,11 +100,19 @@ const MarketWS = (() => {
         apiPending.forEach((p) => { clearTimeout(p.timer); p.reject(new Error('WS_CLOSED')); });
         apiPending.clear();
         if (!settled) {
+          // Nunca llegó a abrir: es un fallo real de conexión, así que sí
+          // vale la pena esperar el enfriamiento antes de reintentar.
           settled = true;
           clearTimeout(timer);
-          apiBroken = true;
+          apiBrokenUntil = Date.now() + RETRY_COOLDOWN_MS;
           reject(new Error('WS_CONNECT_FAILED'));
         }
+        // Si sí llegó a abrir y se cayó después (una red que titila un
+        // segundo, Binance reiniciando ese nodo, etc.), no se aplica
+        // ningún enfriamiento — ya se demostró que el camino funciona, así
+        // que el próximo pedido de velas (el siguiente cambio de activo, o
+        // el refresco automático de cada 60s) simplemente vuelve a abrir
+        // el socket de una, sin esperar nada de más.
       };
       ws.addEventListener('close', onGone);
       ws.addEventListener('error', onGone);
@@ -142,20 +159,46 @@ const MarketWS = (() => {
   // -----------------------------------------------------------------
   // Socket "stream": precio en vivo que Binance empuja solo (sin que
   // haya que preguntar), para todos los símbolos suscritos a la vez.
+  //
+  // Este socket se abre UNA vez al entrar al dashboard o al panel de
+  // trading y se queda abierto mientras la persona sigue navegando entre
+  // activos — por eso, a diferencia del socket de arriba (que se vuelve a
+  // pedir bajo demanda en cada cambio de activo), acá si de verdad importa
+  // reconectar solo cuando se cae, para que el precio en vivo no se quede
+  // "congelado" en silencio por el resto de la visita.
   // -----------------------------------------------------------------
   let streamSocket = null;
-  let streamBroken = false;
   let streamSymbolsKey = '';
   let streamConnectedOnce = false;
   const streamListeners = new Set();
+  let lastStreamSymbols = [];
+  let streamReconnectTimer = null;
+  // Empieza corto (2s) para que un corte pasajero se sienta instantáneo,
+  // y se va alargando si sigue fallando (hasta 20s) para no insistir sin
+  // parar contra una red que de verdad tiene el WebSocket bloqueado. Se
+  // resetea a 2s apenas se logra conectar bien una vez.
+  let streamRetryDelayMs = 2000;
+  const STREAM_RETRY_MAX_MS = 20_000;
 
   function tickerStreamName(symbol) { return `${symbol.toLowerCase()}@ticker`; }
 
+  function scheduleStreamReconnect() {
+    if (streamReconnectTimer || !streamListeners.size || !lastStreamSymbols.length) return;
+    streamReconnectTimer = setTimeout(() => {
+      streamReconnectTimer = null;
+      streamSymbolsKey = ''; // fuerza a abrir un socket nuevo con el mismo set de símbolos
+      connectStream(lastStreamSymbols);
+    }, streamRetryDelayMs);
+    streamRetryDelayMs = Math.min(streamRetryDelayMs * 2, STREAM_RETRY_MAX_MS);
+  }
+
   function connectStream(symbols) {
-    if (streamBroken || !symbols.length) return;
+    if (!symbols.length) return;
+    lastStreamSymbols = symbols;
     const key = symbols.slice().sort().join(',');
     if (streamSocket && streamSymbolsKey === key) return;
     if (streamSocket) { try { streamSocket.close(); } catch {} }
+    if (streamReconnectTimer) { clearTimeout(streamReconnectTimer); streamReconnectTimer = null; }
 
     streamSymbolsKey = key;
     const streamsParam = symbols.map(tickerStreamName).join('/');
@@ -163,19 +206,19 @@ const MarketWS = (() => {
     try {
       ws = new WebSocket(STREAM_URL_BASE + streamsParam);
     } catch {
-      streamBroken = true;
+      scheduleStreamReconnect();
       return;
     }
 
     const connectTimer = setTimeout(() => {
-      if (!streamConnectedOnce) {
-        streamBroken = true;
+      if (streamSocket === ws && !streamConnectedOnce) {
         try { ws.close(); } catch {}
       }
     }, CONNECT_TIMEOUT_MS);
 
     ws.addEventListener('open', () => {
       streamConnectedOnce = true;
+      streamRetryDelayMs = 2000; // ya conectó bien: la próxima falla vuelve a empezar corta
       clearTimeout(connectTimer);
     });
     ws.addEventListener('message', (ev) => {
@@ -189,8 +232,11 @@ const MarketWS = (() => {
     });
     ws.addEventListener('close', () => {
       clearTimeout(connectTimer);
-      if (!streamConnectedOnce) streamBroken = true;
-      if (streamSocket === ws) streamSocket = null;
+      if (streamSocket === ws) {
+        streamSocket = null;
+        streamSymbolsKey = '';
+        scheduleStreamReconnect();
+      }
     });
     ws.addEventListener('error', () => {});
 
@@ -207,8 +253,8 @@ const MarketWS = (() => {
     return () => streamListeners.delete(callback);
   }
 
-  function isApiAvailable() { return !apiBroken; }
-  function isStreamAvailable() { return !streamBroken; }
+  function isApiAvailable() { return !(apiBrokenUntil && Date.now() < apiBrokenUntil); }
+  function isStreamAvailable() { return Boolean(streamSocket && streamConnectedOnce); }
 
   return { getKlines, onTicker, isApiAvailable, isStreamAvailable };
 })();

@@ -1777,6 +1777,190 @@ cambio** (no solo el símbolo).
   no genera ningún error — se ve correctamente como "0.00 USDT" en su
   tarjeta, confirmado también con una captura de pantalla.
 
+## 35. La página entera esperaba en silencio a un CDN externo, y el socket de precio en vivo no se recuperaba solo (agosto 2026)
+
+- Lucas volvió a pedir explícitamente que el panel de trading cargue de
+  inmediato al entrar, que cualquier activo que elija también cargue de
+  inmediato, y que moverse entre varias monedas se siga sintiendo fluido
+  durante toda la visita — es decir, exactamente el objetivo de la
+  sección 32 (el cambio a Binance), pero pidiendo confirmar/reforzar que
+  de verdad se cumple siempre, no solo la mayoría de las veces.
+- Al poner esto a prueba a fondo (simulando distintas fallas de red, algo
+  que en el uso normal es imposible de provocar a propósito) aparecieron
+  dos causas reales, más allá de lo ya resuelto con Binance:
+  1. **La librería que dibuja el gráfico (lightweight-charts) se cargaba
+     con un `<script>` normal de un servidor externo (unpkg.com), del
+     tipo que BLOQUEA el resto de la página hasta que termina de
+     descargar.** Si ese servidor externo respondía lento en ese momento
+     (una red que tropieza, un pico de tráfico del CDN, etc.), TODA la
+     página se quedaba esperando — incluyendo cosas que no tienen nada
+     que ver con el gráfico, como el precio en vivo o el balance de las
+     cuentas. Esto se sentía exactamente como "tarda mucho en conectar",
+     aunque el problema no fuera ni de Binance ni de Zenith Capital, sino
+     de qué tan rápido respondiera ese servidor externo en ese instante
+     puntual.
+  2. **El socket que empuja el precio en vivo (a diferencia del que pide
+     el historial del gráfico) nunca se reconectaba solo si se cortaba a
+     mitad de sesión** — un corte de red de un segundo (wifi que titila,
+     la laptop que se suspende un momento, Binance reiniciando ese nodo
+     puntual) lo dejaba "congelado" en silencio por el resto de la
+     visita: el precio dejaba de sentirse en vivo, sin ningún aviso, y de
+     a poco la página volvía a depender del límite gratuito de CoinGecko.
+- Corrección de la causa 1: la librería del gráfico ahora se pide en
+  paralelo, sin bloquear nada — el resto del panel (precios, cuentas,
+  historial de operaciones) arranca de inmediato sin esperar a que esa
+  pieza externa esté lista, y el gráfico se dibuja apenas la librería
+  llega (normalmente ya está lista para ese momento). Si de verdad no
+  llega en 6 segundos, se avisa con el mismo mensaje de siempre ("no se
+  pudo cargar el gráfico") en vez de dejar la sección en blanco para
+  siempre — y el resto del panel (comprar/vender, precios, cuentas) sigue
+  funcionando con total normalidad de todos modos, porque nunca dependió
+  de esa librería. Mismo arreglo en el dashboard, para el gráfico de
+  Zenith (ZNT).
+- Corrección de la causa 2: el socket de precio en vivo ahora se
+  reconecta solo apenas se cae, con una espera que empieza corta (2s) y
+  se va alargando si sigue fallando (hasta 20s) para no insistir sin
+  parar contra una red que de verdad tenga el WebSocket bloqueado — y que
+  se resetea a 2s apenas logra conectar bien una vez. También se corrigió
+  algo parecido en el socket que pide el historial del gráfico: antes,
+  una sola falla de conexión al entrar lo desactivaba para el resto de la
+  visita (para no perder tiempo reintentando en cada cambio de activo) —
+  ahora, tras 15 segundos de enfriamiento, se vuelve a intentar solo en
+  el siguiente cambio de activo, así que un tropiezo pasajero justo al
+  entrar ya no condena toda la sesión al camino lento de respaldo.
+- Se aclara, porque puede no ser obvio: el precio y el historial de
+  velas se piden directamente desde el navegador de cada persona hacia
+  los servidores de Binance — esto no pasa por Render ni por Vercel, así
+  que el tiempo que tarda Render en "despertar" (plan gratuito) no tiene
+  ningún efecto sobre qué tan rápido carga el gráfico.
+- Verificado con pruebas automatizadas que simulan cuatro escenarios: (1)
+  todo funcionando perfecto — el gráfico del activo por defecto aparece
+  en ~250ms y cambiar entre varios activos toma ~180-230ms cada vez, sin
+  tocar nunca a CoinGecko; (2) el socket de velas falla al entrar — cae a
+  CoinGecko como respaldo y, pasado el enfriamiento, vuelve solo a
+  Binance; (3) el socket de precio en vivo se corta a mitad de sesión —
+  se reconecta solo y el precio vuelve a actualizarse; (4) el CDN de la
+  librería del gráfico está totalmente bloqueado — el precio en vivo y la
+  lista de instrumentos igual aparecen en ~150ms, y el gráfico muestra su
+  aviso de siempre tras 6 segundos en vez de dejar el panel entero
+  congelado.
+
+## 36. Petróleo/Forex/Índices en el panel, billeteras y perfil simplificados, se quita "Análisis con IA", y Rangos se convierte en Planes de Inversión con calculadora ROI y Quick Ledger (agosto 2026)
+
+- Lucas pidió, con un detalle de requerimientos punto por punto, un
+  rediseño grande de varias partes de la plataforma. Antes de tocar
+  código: la combinación de "planes de inversión con montos fijos" +
+  "calculadora que proyecta ganancias a futuro", justo después de
+  conversaciones anteriores sobre vender el proyecto o volverlo legítimo,
+  coincide con el patrón estructural de esquemas Ponzi/HYIP — así que se
+  preguntó explícitamente antes de escribir nada. Lucas confirmó que
+  **sigue siendo 100% simulación, sin dinero real de por medio**, y todo
+  lo de abajo se construyó sobre esa base (ver la sección de
+  Restricciones de seguridad más abajo, sin cambios).
+
+**1. Nuevos activos: Petróleo, Forex e Índices bursátiles**
+
+- Se agregaron al panel de trading tres categorías nuevas, cada una con
+  su propia pestaña de filtro: Petróleo (WTI y Brent), Forex (7 pares:
+  EUR/USD, GBP/USD, USD/JPY, USD/MXN, USD/COP, USD/ARS, USD/BRL) e
+  Índices bursátiles (S&P 500, Dow Jones, Nasdaq 100).
+- Petróleo e Índices: precio real vía Alpha Vantage (`data/markets.js`,
+  backend nuevo), cacheado varias horas porque el plan gratis de esa API
+  da como máximo 25 peticiones/día y solo el cierre del día anterior (no
+  en vivo al segundo). Los índices usan un ETF espejo real (SPY, DIA,
+  QQQ) porque el plan gratis no da el índice "puro" — se marca así de
+  forma honesta en la lista de instrumentos (ver `INDEX_SYMBOLS` con su
+  campo `note`). Requiere la variable opcional `ALPHA_VANTAGE_API_KEY`
+  (ver `.env.example`); sin ella, estos activos aparecen como "no
+  disponible" en vez de romper el resto del panel.
+- Forex: no necesitó ninguna fuente nueva — reutiliza las mismas tasas de
+  cambio reales que ya usa toda la plataforma (`/api/currency/rates`),
+  actualizadas cada hora. El precio de cualquier par se calcula como
+  `rates[quote] / rates[base]`.
+- Como estos tres tipos de activo no tienen historial de velas gratuito
+  (igual que ya pasaba con los metales), el gráfico se construye 100% en
+  vivo desde el momento en que se abren, con un aviso propio por
+  categoría explicando la frecuencia real de actualización de cada una
+  — nunca se inventa un historial que no existe.
+
+**2. Billeteras y perfil más simples**
+
+- Se quitó el campo "Número de billetera" del formulario: ahora una
+  billetera se identifica solo por su nombre. El número (`accountNumber`)
+  se sigue generando automáticamente por dentro (por si algún reporte
+  interno lo necesita) pero ya nunca se le pide ni se le muestra al
+  usuario. Se agregó una validación nueva: dos billeteras del mismo
+  usuario ya no pueden tener el mismo nombre (antes sí podían, y sin el
+  número para diferenciarlas se volvía ambiguo cuál era cuál).
+- Se quitó por completo el campo "Tipo de billetera" (Standard/Pro/Zero/
+  VIP) del formulario, de la base de datos y de todas las pantallas
+  donde se mostraba — ya se había confirmado antes que era puramente
+  cosmético, sin ningún efecto real en apalancamiento ni comisiones.
+- Se quitó el campo "Dirección de vivienda" del formulario de datos
+  personales (el backend ya lo trataba como opcional y no se mostraba en
+  ningún otro lado, así que no hizo falta tocar nada del servidor).
+
+**3. Se quita "Análisis con IA"**
+
+- Se eliminó por completo la sección "Análisis con IA" del dashboard (el
+  botón "Generar análisis" que llamaba a OpenAI) y su lógica en
+  `dashboard.js`. La ruta del backend (`/api/ai/insights`) se deja intacta
+  pero sin usar, a propósito, para no tocar nada más de lo pedido.
+- Esto es distinto de la "Asesoría IA · Diamante y Platino" (recomendaciones
+  para cuentas de rango alto) y de la auto-inversión con ZNT, que siguen
+  funcionando exactamente igual que antes — Lucas no pidió tocar esas.
+
+**4. "Rangos" se convierte en "Planes de Inversión"**
+
+- La página `insignias.html` (antes "Insignias Zenith", la vitrina de los
+  5 rangos) se reemplazó por `planes.html`/`planes.js` ("Planes de
+  Inversión"), con los 5 planes pedidos: Bronce $250, Plata $800, Oro
+  $1500, Diamante $3000 y Rubí $5000. Cada tarjeta tiene un botón
+  "Seleccionar y depositar" que manda directo al dashboard con el monto
+  del plan ya cargado en el formulario de depósito (nunca se salta la
+  revisión manual — el depósito sigue quedando "en proceso" hasta que el
+  equipo lo confirme, igual que cualquier otro).
+- Importante: esto es un sistema DISTINTO del de rangos/insignias que ya
+  existía (`RANK_TIERS` en `dashboard.js`, la insignia del encabezado, y
+  el umbral que habilita la Asesoría IA avanzada) — ese sigue funcionando
+  exactamente igual, sin tocarse. Los nombres de nivel se parecen a
+  propósito (Bronce, Plata, Oro, Diamante) pero son dos cosas separadas:
+  una es un monto sugerido de depósito con calculadora educativa: la otra
+  es un cálculo automático de prestigio según el saldo real de la cuenta.
+- Todos los enlaces a "Insignias Zenith" en el resto del sitio
+  (`dashboard.html`, `community.html`, `support.html`,
+  `trading-panel.html`) se actualizaron a "Planes de Inversión".
+
+**Calculadora de ROI simulado, Quick Ledger, y estilo mejorado**
+
+- **Calculadora de ROI**: widget en `planes.html` con un slider que la
+  propia persona mueve para elegir una tasa mensual hipotética (0% a
+  8%), y proyecta con interés compuesto cómo se vería el monto del plan
+  elegido a 30/60/90 días. A propósito NO hay ninguna tasa sugerida ni
+  "recomendada" por la plataforma — el número siempre lo elige la
+  persona, y hay un aviso visible y permanente aclarando que es una
+  herramienta educativa, no una promesa ni garantía de rendimiento.
+- **Quick Ledger**: tabla nueva en la parte de arriba del dashboard con
+  los últimos 5 depósitos y su estado — "Pendiente" (en revisión),
+  "Aprobado" (confirmado pero el saldo todavía no llega al monto del
+  plan elegido, si había uno) o "Activo" (confirmado y el saldo ya
+  alcanza ese monto). La relación depósito↔plan se guarda en
+  `localStorage` del navegador (no hizo falta tocar el backend): es
+  solo una etiqueta informativa, nunca afecta el saldo real.
+- **Estilo**: el modo oscuro ahora tiene un tinte azul marino en vez de
+  negro/gris puro, y se agregaron brillos "glow" sutiles (azul eléctrico
+  y oro metálico, variables `--glow-accent`/`--glow-gold`) en puntos
+  puntuales de alto valor — tarjetas de plan premium, la calculadora de
+  ROI, el Quick Ledger, botones primarios al pasar el mouse — sin
+  saturar el resto de la interfaz. El modo claro usa una versión mucho
+  más discreta del mismo efecto.
+- **Notificaciones flotantes (toasts)**: ya existían para compra/venta
+  simulada en el panel de trading; se reutilizaron (no se reconstruyeron
+  desde cero) y se les agregó una animación de entrada y un brillo sutil
+  según el tipo de aviso. Seleccionar un plan también dispara un toast
+  ("Plan X seleccionado — completa tu depósito de $X para activarlo") al
+  llegar al dashboard.
+
 ## Restricciones de seguridad (no negociables)
 
 - **Nunca** se construye un formulario que pida número de tarjeta completo,

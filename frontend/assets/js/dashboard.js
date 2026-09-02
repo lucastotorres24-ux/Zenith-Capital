@@ -104,6 +104,22 @@ let tradeMode = 'buy';
 let tradeAssetId = null;
 let currentRank = null; // { key, label } | null
 
+// Mismos 5 planes que planes.html (ver assets/js/planes.js) — se duplican
+// acá solo para poder mostrar el nombre del plan en el Quick Ledger, igual
+// que RANK_TIERS ya se duplica entre este archivo e insignias/planes.js.
+const INVESTMENT_PLANS = [
+  { key: 'bronce', label: 'Bronce', amount: 250 },
+  { key: 'plata', label: 'Plata', amount: 800 },
+  { key: 'oro', label: 'Oro', amount: 1500 },
+  { key: 'diamante', label: 'Diamante', amount: 3000 },
+  { key: 'rubi', label: 'Rubí', amount: 5000 },
+];
+
+// Se llena cuando la persona llega desde "Planes de Inversión" con un
+// depósito ya elegido (ver handlePlanQueryParams) y se limpia apenas ese
+// depósito se crea — ver handleDepositSubmit.
+let pendingPlanTag = null;
+
 document.addEventListener('DOMContentLoaded', () => {
   if (!Api.isLoggedIn()) {
     window.location.href = 'index.html';
@@ -119,9 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
     wireCurrencySelector();
   }
   wireModal();
-  wireAiPanel();
   wireAdvisoryPanel();
   wireDepositModal();
+  handlePlanQueryParams();
   wireWithdrawModal();
   wireTradeModal();
   wireProfileModal();
@@ -425,6 +441,7 @@ async function loadAccounts() {
     renderStatTiles(accountsCache);
     renderAccounts(accountsCache);
     updateRankBadge();
+    renderQuickLedger();
   } catch (err) {
     showToast(err.message, 'error');
     if (!Api.isLoggedIn()) {
@@ -486,9 +503,7 @@ function renderAccounts(accounts) {
         <span class="wallet-dot" style="background:${walletColor}"></span>
         <div class="wallet-title">
           <span class="wallet-name">${escapeHtml(walletName)}</span>
-          <span class="account-number">${escapeHtml(account.accountNumber)}</span>
         </div>
-        <span class="badge">${escapeHtml(account.accountType)}</span>
       </div>
       <div class="account-metrics">
         <div class="account-metric">
@@ -552,7 +567,7 @@ async function handleDelete(id) {
   const account = accountsCache.find((a) => a.id === id);
   if (!account) return;
 
-  const confirmed = window.confirm(`¿Eliminar la billetera "${account.walletName || account.accountNumber}" (${account.accountNumber})? Esta acción no se puede deshacer.`);
+  const confirmed = window.confirm(`¿Eliminar la billetera "${account.walletName || 'Mi Billetera'}"? Esta acción no se puede deshacer.`);
   if (!confirmed) return;
 
   try {
@@ -625,7 +640,7 @@ function openEditModal(id) {
   const account = accountsCache.find((a) => a.id === id);
   if (!account) return;
 
-  document.getElementById('modal-title').textContent = `Editar ${account.walletName || account.accountNumber}`;
+  document.getElementById('modal-title').textContent = `Editar ${account.walletName || 'Mi Billetera'}`;
   document.getElementById('account-id').value = account.id;
   document.getElementById('wallet-name').value = account.walletName || 'Mi Billetera';
   selectedWalletColor = account.walletColor || WALLET_COLORS[0];
@@ -637,9 +652,6 @@ function openEditModal(id) {
   } else {
     document.getElementById('wallet-link-field').style.display = 'none';
   }
-  document.getElementById('account-number').value = account.accountNumber;
-  document.getElementById('account-number').disabled = true; // no se puede cambiar el número
-  document.getElementById('account-type').value = account.accountType;
   document.getElementById('account-currency').value = account.currency;
   // Balance y equity se muestran de solo lectura (no editables) — el valor
   // real, actualizado, lo asigna Zenith Capital desde el panel de admin.
@@ -653,7 +665,6 @@ function openEditModal(id) {
 
 function closeModal() {
   document.getElementById('account-modal').classList.remove('is-visible');
-  document.getElementById('account-number').disabled = false;
 }
 
 function showModalError(message) {
@@ -673,8 +684,6 @@ async function handleAccountSubmit(event) {
   // El servidor además los ignora si llegaran a mandarse (ver routes/accounts.js) —
   // solo el panel de administrador puede asignar o cambiar el saldo real.
   const payload = {
-    accountNumber: document.getElementById('account-number').value.trim(),
-    accountType: document.getElementById('account-type').value,
     currency: document.getElementById('account-currency').value,
     leverage: document.getElementById('account-leverage').value,
     walletName: document.getElementById('wallet-name').value.trim(),
@@ -818,6 +827,14 @@ async function handleDepositSubmit(event) {
   try {
     const deposit = await Api.createDeposit(payload);
 
+    // Si este depósito viene de "Planes de Inversión" (ver
+    // handlePlanQueryParams), se guarda qué plan le corresponde para que el
+    // Quick Ledger pueda mostrar su nombre y estado de activación.
+    if (pendingPlanTag) {
+      saveDepositPlanTag(deposit.id, pendingPlanTag.key);
+      pendingPlanTag = null;
+    }
+
     // Cambia el formulario por el comprobante de estado.
     document.getElementById('deposit-form').style.display = 'none';
     document.getElementById('deposit-receipt').style.display = 'block';
@@ -839,9 +856,117 @@ async function loadDeposits() {
   try {
     depositsCache = await Api.getDeposits();
     renderDeposits(depositsCache);
+    renderQuickLedger();
   } catch (err) {
     // Silencioso: un fallo aquí no debe tumbar el resto del dashboard.
   }
+}
+
+// ---------------------------------------------------------------------
+// Planes de Inversión (ver planes.html/planes.js): si la persona llega
+// acá con un plan ya elegido, se abre el modal de depósito directamente
+// con el monto del plan cargado, en vez de que tenga que volver a
+// escribirlo a mano.
+// ---------------------------------------------------------------------
+
+function handlePlanQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  const planKey = params.get('planKey');
+  const planAmount = Number(params.get('planAmount'));
+  if (!planKey || !Number.isFinite(planAmount) || planAmount <= 0) return;
+
+  // Limpia la URL de inmediato para que refrescar la página no vuelva a
+  // abrir el modal solo, ni deje el plan "pegado" si la persona cierra el
+  // modal sin depositar.
+  window.history.replaceState({}, '', window.location.pathname);
+
+  const plan = INVESTMENT_PLANS.find((p) => p.key === planKey) || { key: planKey, label: 'este plan', amount: planAmount };
+  pendingPlanTag = plan;
+
+  openDepositModal();
+  const localAmount = (typeof Currency !== 'undefined' && Currency.hasRate())
+    ? Currency.toLocal(plan.amount)
+    : plan.amount;
+  document.getElementById('deposit-amount').value = Number(localAmount.toFixed(2));
+  showToast(`Plan ${plan.label} seleccionado — completa tu depósito de ${money(plan.amount)} para activarlo`, 'info');
+}
+
+// Asocia un depósito ya creado con el plan que lo originó, guardado del
+// lado del navegador (no hace falta tocar el backend para esto: es solo
+// una etiqueta informativa para el Quick Ledger de este mismo navegador).
+function saveDepositPlanTag(depositId, planKey) {
+  try {
+    const map = JSON.parse(localStorage.getItem('zenith_deposit_plans') || '{}');
+    map[depositId] = planKey;
+    localStorage.setItem('zenith_deposit_plans', JSON.stringify(map));
+  } catch (e) {
+    // localStorage no disponible — el depósito se crea igual, solo que sin
+    // etiqueta de plan en el Quick Ledger.
+  }
+}
+
+function getDepositPlanTag(depositId) {
+  try {
+    const map = JSON.parse(localStorage.getItem('zenith_deposit_plans') || '{}');
+    return map[depositId] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Quick Ledger: mini tabla con los últimos depósitos y en qué estado está
+// cada uno. El estado de la revisión del depósito en sí (Pendiente/
+// Rechazado) sale directo del backend; "Activo" es una lectura honesta de
+// si el saldo actual ya alcanza el monto del plan elegido — no se inventa
+// ningún dato nuevo, solo se combinan dos que ya existen (el depósito y el
+// balance de las cuentas).
+// ---------------------------------------------------------------------
+
+function renderQuickLedger() {
+  const body = document.getElementById('quick-ledger-body');
+  const empty = document.getElementById('quick-ledger-empty');
+  const table = document.getElementById('quick-ledger-table');
+  if (!body) return; // esta sección no existe en todas las páginas
+
+  const recent = [...depositsCache]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 5);
+
+  if (recent.length === 0) {
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  const totalBalance = accountsCache.reduce((sum, a) => sum + Number(a.balance || 0), 0);
+
+  body.innerHTML = recent.map((d) => {
+    const planKey = getDepositPlanTag(d.id);
+    const plan = planKey ? INVESTMENT_PLANS.find((p) => p.key === planKey) : null;
+    const { label, className } = quickLedgerStatus(d, plan, totalBalance);
+    return `
+      <tr>
+        <td>${new Date(d.createdAt).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}</td>
+        <td>${fundingMoney(d.amount)}</td>
+        <td>${plan ? escapeHtml(plan.label) : '—'}</td>
+        <td><span class="badge ${className}">${label}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function quickLedgerStatus(deposit, plan, totalBalance) {
+  if (deposit.status === 'en_proceso') return { label: 'Pendiente', className: 'badge-en_proceso' };
+  if (deposit.status === 'rechazado') return { label: 'Rechazado', className: 'badge-rechazado' };
+  // completado: si no está atado a un plan, ya está aprobado y disponible
+  // en el balance — no hay un umbral de plan contra el cual compararlo.
+  if (!plan) return { label: 'Aprobado', className: 'badge-completado' };
+  return totalBalance >= plan.amount
+    ? { label: 'Activo', className: 'badge-completado' }
+    : { label: 'Aprobado', className: 'badge-en_proceso' };
 }
 
 function renderDeposits(deposits) {
@@ -1080,7 +1205,7 @@ function openTradeModal(mode, assetId) {
 
   const accountSelect = document.getElementById('trade-account');
   accountSelect.innerHTML = accountsCache
-    .map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || a.accountNumber)} (${escapeHtml(a.accountNumber)}) · ${money(a.balance, a.currency)}</option>`)
+    .map((a) => `<option value="${a.id}">${escapeHtml(a.walletName || 'Mi Billetera')} · ${money(a.balance, a.currency)}</option>`)
     .join('');
 
   updateTradeTotal();
@@ -1377,7 +1502,6 @@ async function openProfileModal() {
     document.getElementById('profile-avatar').textContent = (profile.fullName || profile.username || 'U').charAt(0).toUpperCase();
     document.getElementById('profile-phone').value = profile.phone || '';
     document.getElementById('profile-birthdate').value = profile.birthDate || '';
-    document.getElementById('profile-address').value = profile.address || '';
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1414,7 +1538,6 @@ async function handleProfileDataSubmit(event) {
   const payload = {
     phone: document.getElementById('profile-phone').value.trim(),
     birthDate: document.getElementById('profile-birthdate').value || null,
-    address: document.getElementById('profile-address').value.trim() || null,
   };
 
   const submitBtn = document.getElementById('profile-data-submit');
@@ -1562,44 +1685,6 @@ async function handlePasswordSubmit(event) {
     showPasswordModalError(err.message);
   } finally {
     submitBtn.disabled = false;
-  }
-}
-
-// ---------------------------------------------------------------------
-// Análisis con IA (OpenAI, vía el backend)
-// ---------------------------------------------------------------------
-
-function wireAiPanel() {
-  document.getElementById('ai-generate-btn').addEventListener('click', generateAiInsight);
-  document.getElementById('ai-regenerate-btn').addEventListener('click', generateAiInsight);
-}
-
-async function generateAiInsight(event) {
-  const button = event.currentTarget;
-  const emptyState = document.getElementById('ai-empty');
-  const resultBox = document.getElementById('ai-result');
-  const errorBox = document.getElementById('ai-error');
-
-  errorBox.classList.remove('is-visible');
-  button.disabled = true;
-  const originalLabel = button.textContent;
-  button.textContent = 'Analizando…';
-
-  try {
-    const { insight, model, generatedAt } = await Api.getAiInsights();
-
-    document.getElementById('ai-result-text').textContent = insight;
-    document.getElementById('ai-result-meta').textContent =
-      `Generado por ${model} · ${new Date(generatedAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`;
-
-    emptyState.style.display = 'none';
-    resultBox.style.display = 'block';
-  } catch (err) {
-    document.getElementById('ai-error-text').textContent = err.message;
-    errorBox.classList.add('is-visible');
-  } finally {
-    button.disabled = false;
-    button.textContent = originalLabel;
   }
 }
 
@@ -1901,9 +1986,15 @@ function renderZenithSnapshot(snapshot) {
   updateRankBadge();
 }
 
-function initZenithChart() {
+async function initZenithChart() {
   if (zenithChart) return;
   const container = document.getElementById('zenith-chart-container');
+  // La librería se pide en paralelo desde <head> (ver window.chartsReady)
+  // en vez de con un <script> bloqueante — se espera acá a que esté
+  // lista (o a que se rinda a los 6s) antes de decidir si hay gráfico o
+  // no, ya que para cuando alguien abre este modal normalmente ya cargó,
+  // pero no está garantizado como sí lo estaba antes.
+  if (window.chartsReady) await window.chartsReady;
   if (!window.LightweightCharts) {
     container.innerHTML = '<div class="empty-state"><div>No se pudo cargar el gráfico (librería no disponible).</div></div>';
     return;
@@ -1945,9 +2036,9 @@ async function loadZenithChartData() {
   }
 }
 
-function openZenithChartModal() {
+async function openZenithChartModal() {
   document.getElementById('zenith-chart-modal').classList.add('is-visible');
-  initZenithChart();
+  await initZenithChart();
   loadZenithChartData();
 }
 

@@ -56,7 +56,7 @@ function buildPrompt(accounts, prices) {
     accounts
       .map(
         (a) =>
-          `- ${a.accountNumber} (${a.accountType}, ${a.currency}): balance ${a.balance}, equity ${a.equity}, apalancamiento ${a.leverage}`
+          `- ${a.walletName || a.accountNumber} (${a.currency}): balance ${a.balance}, equity ${a.equity}, apalancamiento ${a.leverage}`
       )
       .join('\n') || '- (el usuario todavía no tiene cuentas creadas)';
 

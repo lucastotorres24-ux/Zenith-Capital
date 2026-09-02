@@ -179,13 +179,17 @@ function getAccountById(id, userId) {
   return account ? stripPendingInternals(account) : null;
 }
 
-function createAccount({ userId, accountNumber, accountType, currency, balance, equity, leverage, walletName, walletColor, walletLink }) {
+function createAccount({ userId, accountNumber, currency, balance, equity, leverage, walletName, walletColor, walletLink }) {
   const db = load();
   const account = {
     id: db.nextAccountId++,
     userId,
+    // accountNumber se guarda internamente (autogenerado, ver
+    // routes/accounts.js) pero ya no se le muestra al usuario — se
+    // identifica su billetera solo por walletName. accountType se eliminó
+    // por completo en agosto 2026: era puramente cosmético, sin ningún
+    // efecto real sobre apalancamiento ni comisiones.
     accountNumber,
-    accountType,
     currency,
     balance,
     equity,
@@ -1182,7 +1186,6 @@ function getAllUsersAdminView() {
         .map((a) => ({
           id: a.id,
           accountNumber: a.accountNumber,
-          accountType: a.accountType,
           currency: a.currency,
           balance: a.balance,
           equity: a.equity,

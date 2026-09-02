@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Zenith Capital — Comunidad</title>
+<title>Zenith Capital — Planes de Inversión</title>
 <link rel="icon" type="image/png" href="assets/img/logo.png" />
 <link rel="stylesheet" href="assets/css/styles.css" />
 <script>
@@ -59,48 +59,75 @@
 
 <main class="page">
 
-  <div class="page-header">
-    <div>
-      <h1>Comunidad Zenith</h1>
-      <p class="subtitle">Clientes certificados Zenith de todos los rangos, conversando sobre el mercado y la plataforma.</p>
-    </div>
-  </div>
+  <section class="planes-hero">
+    <span class="planes-hero-tag">Simulación educativa · sin dinero real</span>
+    <h1>Planes de Inversión</h1>
+    <p class="subtitle">
+      Elige un monto de referencia para tu próximo depósito simulado y explora, con la
+      calculadora de abajo, cómo se vería una proyección de crecimiento hipotética a
+      30, 60 y 90 días. Ningún plan garantiza ni promete un rendimiento real.
+    </p>
+  </section>
 
-  <section class="section community-layout">
-    <div class="community-members">
-      <h3 class="community-members-title">Clientes certificados</h3>
-      <div id="community-members-list" class="community-members-list">
-        <!-- se llena por JS -->
+  <section class="planes-grid" id="planes-grid">
+    <!-- se llena por JS -->
+  </section>
+
+  <section class="roi-calc-card" id="roi-calc-card">
+    <div class="roi-calc-header">
+      <div>
+        <h2>Calculadora de proyección (ROI simulado)</h2>
+        <p class="subtitle">Ajusta el plan y una tasa de crecimiento hipotética para ver cómo se vería tu saldo — es una herramienta educativa, no una promesa de ganancia.</p>
       </div>
     </div>
 
-    <div class="community-chat">
-      <div class="community-chat-feed" id="community-feed">
-        <!-- se llena por JS -->
+    <div class="roi-calc-body">
+      <div class="roi-calc-controls">
+        <div class="field">
+          <label for="roi-plan-select">Plan base</label>
+          <select id="roi-plan-select"></select>
+        </div>
+
+        <div class="field">
+          <label for="roi-rate-slider">
+            Tasa mensual hipotética a explorar: <strong id="roi-rate-value">2.0%</strong>
+          </label>
+          <input type="range" id="roi-rate-slider" min="0" max="8" step="0.5" value="2" />
+          <span class="field-hint">Tú eliges este número para explorar escenarios — Zenith Capital no fija, promete ni garantiza ninguna tasa de rendimiento.</span>
+        </div>
       </div>
-      <form class="community-composer" id="community-composer">
-        <input
-          id="community-composer-input"
-          type="text"
-          maxlength="500"
-          placeholder="Escribe algo para la comunidad…"
-          autocomplete="off"
-          required
-        />
-        <button type="submit" class="btn btn-primary" id="community-composer-submit">Enviar</button>
-      </form>
-      <div class="form-error" id="community-composer-error">
-        <span>⚠</span>
-        <span id="community-composer-error-text"></span>
+
+      <div class="roi-calc-results">
+        <div class="roi-result-tile">
+          <div class="roi-result-label">A 30 días</div>
+          <div class="roi-result-value" id="roi-value-30">—</div>
+          <div class="roi-result-gain" id="roi-gain-30">—</div>
+        </div>
+        <div class="roi-result-tile">
+          <div class="roi-result-label">A 60 días</div>
+          <div class="roi-result-value" id="roi-value-60">—</div>
+          <div class="roi-result-gain" id="roi-gain-60">—</div>
+        </div>
+        <div class="roi-result-tile">
+          <div class="roi-result-label">A 90 días</div>
+          <div class="roi-result-value" id="roi-value-90">—</div>
+          <div class="roi-result-gain" id="roi-gain-90">—</div>
+        </div>
       </div>
+    </div>
+
+    <div class="roi-disclaimer">
+      ⚠ Esto es una simulación educativa con interés compuesto sobre un número que tú mismo eliges en el control de arriba. No es un cálculo basado en el desempeño real de ningún activo, no representa dinero real y Zenith Capital no garantiza, promete ni ofrece ningún porcentaje de rendimiento.
     </div>
   </section>
 
-  <p class="community-disclaimer">
-    💡 Los demás clientes de esta comunidad son simulados — sus mensajes se generan automáticamente para
-    ambientar la plataforma de práctica y no provienen de personas reales. Tus mensajes sí son reales y
-    recibirás una respuesta de la comunidad poco después de enviarlos.
-  </p>
+  <section class="insignias-cta">
+    <div>
+      <h2>¿Listo para tu próximo depósito?</h2>
+      <p class="subtitle">Elige un plan arriba o deposita el monto que prefieras — siempre queda sujeto a revisión manual, como cualquier otro movimiento en Zenith Capital.</p>
+    </div>
+    <a class="btn btn-primary btn-lg" href="dashboard.html">💰 Ir a depositar</a>
+  </section>
 
 </main>
 
@@ -167,6 +194,6 @@
 <script src="assets/js/config.js"></script>
 <script src="assets/js/site-gate.js"></script>
 <script src="assets/js/api.js"></script>
-<script src="assets/js/community.js"></script>
+<script src="assets/js/planes.js"></script>
 </body>
 </html>

@@ -59,11 +59,9 @@ directo en el navegador.
 - Diseño oscuro "fintech" propio (no es una copia de ningún broker), con
   paleta validada para contraste y daltonismo — colores de estado (verde/rojo)
   siempre van acompañados de un ícono (▲/▼), nunca dependen solo del color.
-- **Análisis con IA**: panel en el dashboard que llama a `/api/ai/insights`
-  del backend y muestra un resumen generado por OpenAI sobre tus cuentas y
-  el mercado. Requiere que el backend tenga `OPENAI_API_KEY` configurada
-  (ver el README de `trading-backend`, sección 8) — si no está configurada,
-  el botón muestra el error tal cual lo devuelve la API, no se rompe nada.
+- **Planes de Inversión**: página con 5 planes de depósito sugerido (Bronce,
+  Plata, Oro, Diamante, Rubí), calculadora de proyección (ROI simulado) y
+  acceso directo al depósito con el monto ya cargado.
 
 ## 4. Desplegarlo con dominio propio
 

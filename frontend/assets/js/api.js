@@ -419,6 +419,23 @@ const Api = {
     return this.request(`/api/market/zenith/candles?limit=${limit}`);
   },
 
+  // ---- Petróleo e Índices bursátiles (ver data/markets.js) ----
+  getOilPrices() {
+    return this.request('/api/market/commodities');
+  },
+
+  getIndexPrices() {
+    return this.request('/api/market/indices');
+  },
+
+  // Tasas de cambio reales (ver data/currency.js) — se reutilizan acá para
+  // construir los pares de Forex del panel de trading (ej. EUR/USD), no
+  // hace falta ninguna fuente nueva. Ruta pública, pero da igual mandar el
+  // token si ya existe.
+  getCurrencyRates() {
+    return this.request('/api/currency/rates', { auth: false });
+  },
+
   adminGetZenithConfig() {
     return this.request('/api/admin/zenith-coin', { admin: true });
   },

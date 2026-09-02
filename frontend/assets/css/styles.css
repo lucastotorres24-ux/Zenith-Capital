@@ -8,11 +8,19 @@
 :root {
   color-scheme: dark;
 
-  /* Superficies */
-  --page-bg: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-2: #202422;
-  --surface-hover: #262a28;
+  /* Superficies — con un ligero tinte azul marino (en vez de gris/negro
+     puro) para que el modo oscuro se sienta más "fintech corporativo" de
+     alta gama, coherente con los brillos --glow-* de más abajo. */
+  --page-bg: #0a0d14;
+  --surface: #14181f;
+  --surface-2: #191f28;
+  --surface-hover: #212832;
+
+  /* Brillos "glow" de marca (azul eléctrico / oro metálico) — se usan con
+     mucha moderación, solo en tarjetas premium y acentos puntuales (ver
+     Planes de Inversión, Quick Ledger), nunca en toda la interfaz. */
+  --glow-accent: 0 0 0 1px rgba(57, 135, 229, 0.35), 0 0 24px rgba(57, 135, 229, 0.22);
+  --glow-gold: 0 0 0 1px rgba(201, 162, 77, 0.4), 0 0 24px rgba(201, 162, 77, 0.22);
 
   /* Tinta */
   --text-primary: #ffffff;
@@ -76,6 +84,11 @@
   --gridline: #e2e0d8;
 
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 24px rgba(30, 28, 20, 0.08);
+
+  /* Los brillos "glow" son un efecto de modo oscuro (ver :root de arriba) —
+     en modo claro se reemplazan por un borde/sombra normal y discreta. */
+  --glow-accent: 0 0 0 1px rgba(57, 135, 229, 0.30), 0 4px 14px rgba(57, 135, 229, 0.10);
+  --glow-gold: 0 0 0 1px rgba(201, 162, 77, 0.35), 0 4px 14px rgba(201, 162, 77, 0.10);
 }
 
 * { box-sizing: border-box; }
@@ -130,8 +143,12 @@ button, input, select { font-family: inherit; }
 .btn-primary {
   background: var(--accent);
   color: #ffffff;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 .btn-primary:hover { background: var(--accent-hover); }
+:root:not([data-theme="light"]) .btn-primary:hover:not(:disabled) {
+  box-shadow: var(--glow-accent);
+}
 .btn-primary:disabled {
   background: var(--surface-2);
   color: var(--text-muted);
@@ -928,6 +945,11 @@ a.brand:hover {
   border-radius: var(--radius-lg);
   padding: 18px 20px;
   box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+:root:not([data-theme="light"]) .stat-tile:hover {
+  border-color: rgba(57, 135, 229, 0.35);
+  box-shadow: var(--shadow-card), var(--glow-accent);
 }
 
 .stat-tile .label {
@@ -1475,13 +1497,15 @@ tr.has-pending:hover {
 
 .instrument-category-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 0 14px 10px;
   border-bottom: 1px solid var(--border);
 }
 .instrument-category-tab {
-  flex: 1;
-  padding: 6px 0;
+  flex: 1 1 auto;
+  min-width: 64px;
+  padding: 6px 4px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -1489,6 +1513,7 @@ tr.has-pending:hover {
   font-weight: 700;
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .instrument-category-tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
 .instrument-category-tab.is-active {
@@ -1537,6 +1562,9 @@ tr.has-pending:hover {
 }
 .instrument-row-icon.is-crypto { background: var(--accent); }
 .instrument-row-icon.is-metal { background: var(--gold); }
+.instrument-row-icon.is-oil { background: #8a5a2e; }
+.instrument-row-icon.is-forex { background: #2fb7ad; }
+.instrument-row-icon.is-index { background: #8a6fd1; }
 
 .instrument-row-name {
   flex: 1;
@@ -1582,6 +1610,9 @@ tr.has-pending:hover {
 }
 .panel-chart-title-icon.is-crypto { background: var(--accent); }
 .panel-chart-title-icon.is-metal { background: var(--gold); }
+.panel-chart-title-icon.is-oil { background: #8a5a2e; }
+.panel-chart-title-icon.is-forex { background: #2fb7ad; }
+.panel-chart-title-icon.is-index { background: #8a6fd1; }
 .panel-chart-title-name { font-weight: 800; font-size: 15px; line-height: 1.2; }
 .panel-chart-title-symbol { font-size: 11px; color: var(--text-muted); font-weight: 700; }
 
@@ -2265,9 +2296,17 @@ tr.has-pending:hover {
   font-size: 13px;
   min-width: 240px;
   box-shadow: var(--shadow-card);
+  animation: toast-in 0.22s ease;
 }
 .toast.is-error { border-left-color: var(--critical); }
 .toast.is-success { border-left-color: var(--good); }
+:root:not([data-theme="light"]) .toast.is-success { box-shadow: var(--shadow-card), 0 0 16px rgba(12, 163, 12, 0.18); }
+:root:not([data-theme="light"]) .toast:not(.is-error):not(.is-success) { box-shadow: var(--shadow-card), var(--glow-accent); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* Panel de administrador: cola de aprobación ------------------------------ */
 
@@ -2673,15 +2712,17 @@ tr.has-pending:hover {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Insignias Zenith (insignias.html)                                      */
+/* Planes de Inversión (planes.html) — reemplaza a la antigua sección de   */
+/* Rangos/Insignias. El sistema de rangos en sí (badge del header,         */
+/* gating de la Asesoría IA) sigue viviendo en dashboard.js, sin tocar.    */
 /* ---------------------------------------------------------------------- */
 
-.insignias-hero {
+.planes-hero {
   text-align: center;
   max-width: 720px;
   margin: 8px auto 40px;
 }
-.insignias-hero-tag {
+.planes-hero-tag {
   display: inline-block;
   font-size: 11px;
   font-weight: 700;
@@ -2693,67 +2734,17 @@ tr.has-pending:hover {
   padding: 5px 14px;
   margin-bottom: 14px;
 }
-.insignias-hero h1 { font-size: 34px; margin: 0 0 12px; }
-.insignias-hero .subtitle { font-size: 15px; line-height: 1.6; }
+.planes-hero h1 { font-size: 34px; margin: 0 0 12px; }
+.planes-hero .subtitle { font-size: 15px; line-height: 1.6; }
 
-.insignias-current-card {
-  margin: 28px auto 0;
-  max-width: 440px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 20px 24px;
-  text-align: left;
-}
-.insignias-current-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-.insignias-current-value {
-  font-size: 22px;
-  font-weight: 800;
-  margin-bottom: 14px;
-}
-.insignias-current-value.rank-bronce { color: #cd7f32; }
-.insignias-current-value.rank-plata { color: #b9c1cc; }
-.insignias-current-value.rank-oro { color: #e6b800; }
-.insignias-current-value.rank-diamante { color: #5ad1e0; }
-.insignias-current-value.rank-platino { color: #e5e4f0; }
-
-.insignias-progress-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-.insignias-progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--accent);
-  transition: width 0.4s ease;
-}
-.insignias-progress-fill.rank-bronce { background: #cd7f32; }
-.insignias-progress-fill.rank-plata { background: #b9c1cc; }
-.insignias-progress-fill.rank-oro { background: #e6b800; }
-.insignias-progress-fill.rank-diamante { background: #5ad1e0; }
-.insignias-progress-fill.rank-platino { background: #e5e4f0; }
-.insignias-progress-note {
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.insignias-grid {
+.planes-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 16px;
-  margin-bottom: 40px;
+  margin-bottom: 32px;
 }
 
-.insignia-card {
+.plan-card {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2762,88 +2753,131 @@ tr.has-pending:hover {
   border-radius: var(--radius-md);
   padding: 22px 18px 24px;
   text-align: left;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.insignia-card:hover { transform: translateY(-3px); }
-.insignia-card.is-current {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(57, 135, 229, 0.16);
-}
-.insignia-card-badge {
-  display: none;
-  position: absolute;
-  top: -10px;
-  left: 18px;
-  font-size: 10px;
+.plan-card:hover { transform: translateY(-3px); }
+.plan-card-icon { font-size: 30px; margin-bottom: 10px; }
+.plan-card h3 { margin: 0 0 6px; font-size: 17px; }
+.plan-card-amount {
+  font-size: 20px;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: var(--accent);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-.insignia-card.is-current .insignia-card-badge {
-  display: inline-block;
-}
-.insignia-card-icon { font-size: 30px; margin-bottom: 10px; }
-.insignia-card h3 { margin: 0 0 6px; font-size: 17px; }
-.insignia-card-req {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--gold);
   margin-bottom: 10px;
 }
-.insignia-card.rank-bronce .insignia-card-req { color: #cd7f32; }
-.insignia-card.rank-plata .insignia-card-req { color: #7d8794; }
-.insignia-card.rank-oro .insignia-card-req { color: #b98e00; }
-.insignia-card.rank-diamante .insignia-card-req { color: #1f9db0; }
-.insignia-card.rank-platino .insignia-card-req { color: #8f8fae; }
-
-.insignia-card-tagline {
+.plan-card-tagline {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
   margin: 0 0 14px;
   min-height: 40px;
 }
-.insignia-card-perks {
+.plan-card-features {
   list-style: none;
   padding: 0;
-  margin: 0 0 14px;
+  margin: 0 0 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: 1;
 }
-.insignia-card-perks li {
+.plan-card-features li {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--text-primary);
   padding-left: 18px;
   position: relative;
 }
-.insignia-card-perks li::before {
+.plan-card-features li::before {
   content: '✓';
   position: absolute;
   left: 0;
   color: var(--accent-2);
   font-weight: 800;
 }
-.insignia-card.is-premium {
-  background: linear-gradient(160deg, var(--surface) 60%, var(--accent-soft));
+/* Los dos planes más altos (Diamante y Rubí) llevan el brillo dorado —
+   moderado, solo acá, para que se sientan "de alta gama" sin saturar el
+   resto de la interfaz. */
+.plan-card.is-premium {
+  background: linear-gradient(160deg, var(--surface) 55%, var(--gold-soft));
+  border-color: rgba(201, 162, 77, 0.4);
 }
-.insignia-card-premium-tag {
-  align-self: flex-start;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
+:root:not([data-theme="light"]) .plan-card.is-premium {
+  box-shadow: var(--glow-gold);
+}
+.plan-card.is-premium:hover {
+  box-shadow: var(--glow-gold);
+}
+
+/* ---- Calculadora de ROI simulado ---- */
+
+.roi-calc-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 26px 28px;
+  margin-bottom: 32px;
+}
+:root:not([data-theme="light"]) .roi-calc-card {
+  box-shadow: var(--glow-accent);
+}
+.roi-calc-header h2 { margin: 0 0 4px; font-size: 19px; }
+.roi-calc-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 28px;
+  margin-top: 18px;
+  align-items: start;
+}
+.roi-calc-controls { display: flex; flex-direction: column; gap: 18px; }
+.roi-calc-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  margin-top: 8px;
+}
+.roi-calc-results {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.roi-result-tile {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: center;
+}
+.roi-result-label {
+  font-size: 11px;
   text-transform: uppercase;
-  color: var(--accent-hover);
-  background: var(--accent-soft);
-  border: 1px solid rgba(57, 135, 229, 0.3);
-  border-radius: 999px;
-  padding: 4px 10px;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
 }
+.roi-result-value {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.roi-result-gain {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.roi-result-gain.is-up { color: var(--good); }
+.roi-result-gain.is-flat { color: var(--text-muted); }
+
+.roi-disclaimer {
+  margin-top: 20px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: #a87005;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+:root:not([data-theme="light"]) .roi-disclaimer { color: #e0b355; }
 
 .insignias-cta {
   display: flex;
@@ -2858,6 +2892,25 @@ tr.has-pending:hover {
   margin-bottom: 40px;
 }
 .insignias-cta h2 { margin: 0 0 4px; font-size: 20px; }
+
+/* ---------------------------------------------------------------------- */
+/* Quick Ledger (dashboard.html) — mini tabla de depósitos recientes y     */
+/* estado de activación del plan elegido, si aplica.                      */
+/* ---------------------------------------------------------------------- */
+
+.quick-ledger-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin-bottom: 22px;
+}
+:root:not([data-theme="light"]) .quick-ledger-card {
+  box-shadow: var(--glow-accent);
+}
+.quick-ledger-header { margin-bottom: 14px; }
+.quick-ledger-header h2 { margin: 0 0 2px; font-size: 16px; }
+.quick-ledger-table-wrap { overflow-x: auto; }
 
 /* ---------------------------------------------------------------------- */
 /* Responsive                                                             */
@@ -2898,8 +2951,10 @@ tr.has-pending:hover {
   .auth-main { padding: 28px 20px 40px; }
 
   .trading-cta { flex-direction: column; align-items: stretch; text-align: center; }
-  .insignias-grid { grid-template-columns: repeat(2, 1fr); }
+  .planes-grid { grid-template-columns: repeat(2, 1fr); }
   .insignias-cta { flex-direction: column; align-items: stretch; text-align: center; }
+  .roi-calc-body { grid-template-columns: 1fr; }
+  .roi-calc-results { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -2907,7 +2962,7 @@ tr.has-pending:hover {
   .zenith-stat-grid { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
   .page { padding: 24px 16px 48px; }
-  .insignias-grid { grid-template-columns: 1fr; }
+  .planes-grid { grid-template-columns: 1fr; }
   .auth-aside { min-height: 160px; padding: 18px 16px; }
   .auth-aside h1 { font-size: 19px; }
   .auth-main { padding: 22px 16px 32px; }

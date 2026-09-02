@@ -16,7 +16,32 @@
     } catch (e) {}
   })();
 </script>
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+  // La librería de gráficos (lightweight-charts) se pide a un CDN externo
+  // (unpkg.com) — antes esto se hacía con un <script src="..."> normal,
+  // que BLOQUEA el resto de la página hasta que termina de descargar: si
+  // ese servidor externo responde lento en ese momento, todo el
+  // dashboard se quedaba esperando, incluyendo cosas que no tienen nada
+  // que ver con el gráfico de Zenith (precio en vivo, balances, etc.) —
+  // aunque el gráfico de ZNT solo se abre bajo pedido, desde su propio
+  // modal. Ahora se pide en paralelo, sin bloquear nada: el resto del
+  // dashboard arranca de inmediato, y el gráfico se dibuja apenas esta
+  // pieza esté lista (normalmente ya lo está para cuando alguien lo
+  // abre). window.chartsReady es una promesa que resuelve a true si
+  // cargó bien, o false si no cargó o tardó más de 6s — cualquiera de los
+  // dos casos deja seguir al resto de la página con normalidad (ver
+  // dashboard.js).
+  window.chartsReady = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js';
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; resolve(ok); };
+    script.addEventListener('load', () => finish(true));
+    script.addEventListener('error', () => finish(false));
+    setTimeout(() => finish(!!window.LightweightCharts), 6000);
+    document.head.appendChild(script);
+  });
+</script>
 </head>
 <body>
 
@@ -50,7 +75,7 @@
     <!-- Insignias y Comunidad ya no son banners grandes en el dashboard —
          ahora son estos dos íconos chiquitos junto al perfil, para que el
          menú se vea más limpio (a pedido de Lucas). -->
-    <a class="icon-nav-btn" href="insignias.html" title="Insignias Zenith" aria-label="Insignias Zenith">🏅</a>
+    <a class="icon-nav-btn" href="planes.html" title="Planes de Inversión" aria-label="Planes de Inversión">💎</a>
     <a class="icon-nav-btn" href="community.html" title="Comunidad Zenith" aria-label="Comunidad Zenith">💬</a>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-trigger" id="user-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">
@@ -125,6 +150,32 @@
     </div>
   </section>
 
+  <!-- Quick Ledger: mini tabla con tus últimos depósitos y en qué estado
+       está cada uno, para verlo de un vistazo sin tener que bajar hasta el
+       historial completo de Depósitos más abajo. -->
+  <section class="quick-ledger-card" id="quick-ledger-card">
+    <div class="quick-ledger-header">
+      <h2>📒 Quick Ledger</h2>
+      <span class="subtitle">Tus últimos movimientos y el estado de activación de cada plan</span>
+    </div>
+    <div class="quick-ledger-table-wrap">
+      <table class="ticker-table" id="quick-ledger-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Monto</th>
+            <th>Plan</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="quick-ledger-body"></tbody>
+      </table>
+      <div class="empty-state" id="quick-ledger-empty" style="display:none;">
+        <div>Todavía no tienes depósitos — cuando hagas uno, aparecerá acá en tiempo real.</div>
+      </div>
+    </div>
+  </section>
+
   <!-- Banner del panel de trading estilo IQ Option: el panel para abrir las
        gráficas, justo debajo del balance. Comunidad e Insignias ya no van
        acá como banners grandes — son los íconos pequeños de la barra
@@ -136,39 +187,6 @@
       <p class="subtitle">Opera Sube / Baja en tiempo reducido, con gráfico de velas y datos reales del mercado.</p>
     </div>
     <a class="btn btn-primary btn-lg" href="trading-panel.html">📊 Abrir panel de trading</a>
-  </section>
-
-  <!-- Análisis con IA -->
-  <section class="section">
-    <div class="section-header">
-      <div>
-        <h2>Análisis con IA</h2>
-        <div class="subtitle">Lectura instantánea de tus cuentas y del mercado, generada por OpenAI.</div>
-      </div>
-      <span class="ai-callout-tag">Powered by OpenAI</span>
-    </div>
-    <div class="section-body">
-
-      <div class="empty-state" id="ai-empty">
-        <div class="icon">✨</div>
-        <div>Genera un análisis del estado de tus cuentas y del mercado cripto en este momento.</div>
-        <button class="btn btn-primary ai-generate-btn" id="ai-generate-btn">Generar análisis</button>
-      </div>
-
-      <div class="ai-result" id="ai-result" style="display:none;">
-        <p class="ai-result-text" id="ai-result-text"></p>
-        <div class="ai-result-footer">
-          <span class="ai-result-meta" id="ai-result-meta"></span>
-          <button class="btn btn-secondary btn-sm" id="ai-regenerate-btn">Regenerar</button>
-        </div>
-      </div>
-
-      <div class="form-error ai-error" id="ai-error">
-        <span>⚠</span>
-        <span id="ai-error-text"></span>
-      </div>
-
-    </div>
   </section>
 
   <!-- Asesoría IA avanzada — solo visible desde el rango Diamante -->
@@ -469,7 +487,7 @@
         <li><a href="dashboard.html">Dashboard</a></li>
         <li><a href="trading-panel.html">Panel de Trading</a></li>
         <li><a href="community.html">Comunidad Zenith</a></li>
-        <li><a href="insignias.html">Insignias Zenith</a></li>
+        <li><a href="planes.html">Planes de Inversión</a></li>
       </ul>
     </div>
 
@@ -530,34 +548,18 @@
       </div>
 
       <div class="field">
-        <label for="account-number">Número de billetera</label>
-        <input id="account-number" placeholder="EX-10004" required />
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label for="account-type">Tipo</label>
-          <select id="account-type">
-            <option value="Standard">Standard</option>
-            <option value="Pro">Pro</option>
-            <option value="Zero">Zero</option>
-            <option value="VIP">VIP</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="account-currency">Moneda</label>
-          <select id="account-currency">
-            <option value="USD">USD — Dólar estadounidense</option>
-            <option value="EUR">EUR — Euro</option>
-            <option value="ARS">ARS — Peso argentino</option>
-            <option value="PEN">PEN — Sol peruano</option>
-            <option value="COP">COP — Peso colombiano</option>
-            <option value="MXN">MXN — Peso mexicano</option>
-            <option value="CLP">CLP — Peso chileno</option>
-            <option value="BRL">BRL — Real brasileño</option>
-            <option value="USDT">USDT — Tether (cripto)</option>
-          </select>
-        </div>
+        <label for="account-currency">Moneda</label>
+        <select id="account-currency">
+          <option value="USD">USD — Dólar estadounidense</option>
+          <option value="EUR">EUR — Euro</option>
+          <option value="ARS">ARS — Peso argentino</option>
+          <option value="PEN">PEN — Sol peruano</option>
+          <option value="COP">COP — Peso colombiano</option>
+          <option value="MXN">MXN — Peso mexicano</option>
+          <option value="CLP">CLP — Peso chileno</option>
+          <option value="BRL">BRL — Real brasileño</option>
+          <option value="USDT">USDT — Tether (cripto)</option>
+        </select>
       </div>
 
       <div class="field-row">
@@ -931,10 +933,6 @@
             <label for="profile-birthdate">Fecha de nacimiento</label>
             <input id="profile-birthdate" type="date" />
           </div>
-        </div>
-        <div class="field">
-          <label for="profile-address">Dirección de vivienda</label>
-          <input id="profile-address" type="text" placeholder="Calle, número, ciudad" />
         </div>
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary" id="profile-data-submit">Guardar cambios</button>

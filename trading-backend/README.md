@@ -98,11 +98,8 @@ curl -X POST http://localhost:4000/api/accounts \
   -H "Authorization: Bearer TU_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "accountNumber": "EX-10003",
-    "accountType": "Standard",
     "currency": "USD",
-    "balance": 500,
-    "equity": 495,
+    "walletName": "Mi Billetera",
     "leverage": "1:50"
   }'
 ```
